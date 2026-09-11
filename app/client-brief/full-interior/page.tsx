@@ -4,9 +4,10 @@ import Image from "next/image";
 import Link from "next/link";
 import {
   ChangeEvent,
-  useCallback,
+  FormEvent,
   useEffect,
   useMemo,
+  useRef,
   useState,
 } from "react";
 
@@ -54,8 +55,8 @@ type BriefForm = {
 
   priorities: string[];
   avoid: string[];
-  avoidNotes: string;
 
+  avoidNotes: string;
   timeline: string;
 
   mustHaves: string;
@@ -64,36 +65,26 @@ type BriefForm = {
   confirmation: boolean;
 };
 
-type ClientData = {
-  id: string;
-  name: string;
-  email: string;
-  contact: string;
-};
+type MultiField =
+  | "spaces"
+  | "lifestyle"
+  | "designStyles"
+  | "atmosphere"
+  | "colors"
+  | "materials"
+  | "furniture"
+  | "storage"
+  | "kitchen"
+  | "bathrooms"
+  | "lighting"
+  | "technology"
+  | "priorities"
+  | "avoid";
 
-type BriefData = {
-  client: ClientData;
-  form: BriefForm;
-};
-
-type AutoSaveStatus =
-  | "idle"
-  | "saving"
-  | "saved"
-  | "error";
-
-const sections = [
-  "Client & Project",
-  "Areas & Lifestyle",
-  "Design Direction",
-  "Materials",
-  "Furniture & Storage",
-  "Kitchen & Bathrooms",
-  "Lighting & Technology",
-  "Priorities",
-  "Timeline & Final Requirements",
-  "Confirmation",
-];
+type SingleField =
+  | "projectType"
+  | "projectStatus"
+  | "timeline";
 
 const initialForm: BriefForm = {
   projectName: "",
@@ -122,8 +113,8 @@ const initialForm: BriefForm = {
 
   priorities: [],
   avoid: [],
-  avoidNotes: "",
 
+  avoidNotes: "",
   timeline: "",
 
   mustHaves: "",
@@ -132,304 +123,721 @@ const initialForm: BriefForm = {
   confirmation: false,
 };
 
-/* =========================================================
-   CLIENT
-========================================================= */
+const projectTypes = [
+  "Apartment",
+  "Detached House",
+  "Semi-Detached House",
+  "Townhouse",
+  "Penthouse",
+  "Office",
+  "Commercial Space",
+  "Other",
+];
 
-function getCurrentClient(): ClientData | null {
-  if (typeof window === "undefined") {
-    return null;
-  }
+const projectStatuses = [
+  "New Build",
+  "Under Construction",
+  "Recently Purchased",
+  "Existing Home",
+  "Renovation",
+  "Rental Property",
+  "Other",
+];
+
+const spaces = [
+  "Living Room",
+  "Dining Area",
+  "Kitchen",
+  "Master Bedroom",
+  "Other Bedrooms",
+  "Walk-in Closet",
+  "Bathrooms",
+  "Home Office",
+  "Entrance / Foyer",
+  "Corridor",
+  "Outdoor / Terrace",
+  "Entertainment Area",
+];
+
+const lifestyle = [
+  "Single Occupant",
+  "Couple",
+  "Family",
+  "Children",
+  "Guests",
+  "Domestic Staff",
+  "Work-from-home",
+  "Frequent Entertaining",
+];
+
+const designStyles = [
+  "Modern",
+  "Contemporary",
+  "Minimalist",
+  "Luxury",
+  "Classic",
+  "Transitional",
+  "Industrial",
+  "Scandinavian",
+  "Japandi",
+  "African Contemporary",
+  "Organic / Natural",
+  "Eclectic",
+];
+
+const atmosphere = [
+  "Warm & Cozy",
+  "Calm & Serene",
+  "Elegant",
+  "Luxurious",
+  "Bold & Dramatic",
+  "Bright & Airy",
+  "Natural",
+  "Sophisticated",
+  "Minimal",
+  "Creative",
+];
+
+const colors = [
+  "Warm Neutrals",
+  "Cool Neutrals",
+  "Earth Tones",
+  "White & Minimal",
+  "Black & Contrast",
+  "Greige",
+  "Wood Tones",
+  "Deep / Moody Colours",
+  "Soft Pastels",
+  "Bold Accent Colours",
+];
+
+const materials = [
+  "Natural Wood",
+  "Wood Grain Melamine",
+  "Super Matte",
+  "High Gloss",
+  "Natural Stone",
+  "Quartz",
+  "Marble",
+  "Porcelain",
+  "Metal",
+  "Glass",
+  "Microcement",
+  "Textured Finishes",
+  "Veneer",
+  "Thermal Foil",
+];
+
+const furniture = [
+  "Sofa / Sectional",
+  "Accent Chairs",
+  "Coffee Table",
+  "TV Console",
+  "Dining Table",
+  "Dining Chairs",
+  "Bed",
+  "Bedside Tables",
+  "Dressing Table",
+  "Home Office Desk",
+  "Bookshelves",
+  "Custom Furniture",
+  "Drawers",
+];
+
+const storage = [
+  "Built-in Wardrobes",
+  "Walk-in Closet",
+  "Kitchen Cabinets",
+  "TV Storage",
+  "Display Cabinets",
+  "Bookshelves",
+  "Entryway Storage",
+  "Laundry Storage",
+  "Home Office Storage",
+  "Hidden Storage",
+  "Custom Joinery",
+  "Open Shelving",
+  "Drawers",
+];
+
+const kitchen = [
+  "Full Kitchen Design",
+  "Island",
+  "Breakfast Bar",
+  "Tall Unit",
+  "Built-in Oven",
+  "Microwave",
+  "Hob",
+  "Extractor",
+  "Integrated Refrigerator",
+  "Pantry Storage",
+  "Wine Storage",
+  "Open Shelving",
+  "Utility / Laundry Area",
+  "Drawers",
+];
+
+const bathrooms = [
+  "Vanity Unit",
+  "Double Vanity",
+  "Walk-in Shower",
+  "Bathtub",
+  "Wall-Hung WC",
+  "Mirrored Cabinet",
+  "Storage",
+  "Feature Wall",
+  "Natural Stone",
+  "Large Format Tiles",
+  "Hotel-style Bathroom",
+];
+
+const lighting = [
+  "Recessed Downlights",
+  "Pendant Lights",
+  "Wall Lights",
+  "LED Strip Lighting",
+  "Cove Lighting",
+  "Feature Lighting",
+  "Under-Cabinet Lighting",
+  "Warm Lighting",
+  "Cool Lighting",
+  "Dimmable Lighting",
+  "Smart Lighting",
+];
+
+const technology = [
+  "Smart Lighting",
+  "Smart Switches",
+  "Automated Curtains",
+  "Home Theatre",
+  "TV / Media System",
+  "Multi-room Audio",
+  "Security System",
+  "Smart Locks",
+  "Voice Control",
+  "Wi-Fi / Networking",
+  "No Special Requirements",
+];
+
+const priorities = [
+  "Aesthetic Appeal",
+  "Functionality",
+  "Storage",
+  "Comfort",
+  "Durability",
+  "Luxury",
+  "Low Maintenance",
+  "Budget Efficiency",
+  "Entertainment",
+  "Family-Friendly Design",
+  "Resale Value",
+  "Timelessness",
+];
+
+const avoid = [
+  "Too Much Colour",
+  "Too Much Wood",
+  "Glossy Finishes",
+  "Dark Interiors",
+  "Very Minimal Design",
+  "Traditional Styling",
+  "Open Shelving",
+  "Visible Clutter",
+  "Heavy Furniture",
+  "Overly Decorative Design",
+];
+
+const timelines = [
+  "As soon as possible",
+  "Within 1–3 months",
+  "Within 3–6 months",
+  "Within 6–12 months",
+  "More than 12 months",
+  "No fixed timeline",
+];
+
+const sections = [
+  {
+    number: "01",
+    title: "Project Information",
+    description:
+      "Tell us about the property and the current stage of your project.",
+  },
+  {
+    number: "02",
+    title: "Spaces & Lifestyle",
+    description:
+      "Tell us which spaces are involved and how the property will be used.",
+  },
+  {
+    number: "03",
+    title: "Design Direction",
+    description:
+      "Define the visual style, atmosphere and colour direction.",
+  },
+  {
+    number: "04",
+    title: "Materials & Finishes",
+    description:
+      "Choose the materials and finishes that best represent your vision.",
+  },
+  {
+    number: "05",
+    title: "Furniture & Storage",
+    description:
+      "Identify the furniture, joinery and storage requirements.",
+  },
+  {
+    number: "06",
+    title: "Kitchen",
+    description:
+      "Tell us about your kitchen layout, functions and features.",
+  },
+  {
+    number: "07",
+    title: "Bathrooms",
+    description:
+      "Select the bathroom features and finishes you require.",
+  },
+  {
+    number: "08",
+    title: "Lighting & Technology",
+    description:
+      "Define your lighting preferences and smart-home requirements.",
+  },
+  {
+    number: "09",
+    title: "Priorities & Preferences",
+    description:
+      "Tell us what matters most and what you would prefer to avoid.",
+  },
+  {
+    number: "10",
+    title: "Timeline & Final Requirements",
+    description:
+      "Give us your timeline and any requirements we should know.",
+  },
+  {
+    number: "11",
+    title: "References & Confirmation",
+    description:
+      "Upload references, review your information and confirm the brief.",
+  },
+];
+
+function getAccounts(): ClientAccount[] {
+  if (typeof window === "undefined") return [];
 
   try {
-    const currentClientId =
-      localStorage.getItem(CURRENT_CLIENT_KEY);
+    const raw = localStorage.getItem(CLIENT_ACCOUNTS_KEY);
 
-    const accountsRaw =
-      localStorage.getItem(CLIENT_ACCOUNTS_KEY);
+    if (!raw) return [];
 
-    if (accountsRaw) {
-      const accounts = JSON.parse(accountsRaw);
+    const parsed = JSON.parse(raw);
 
-      if (
-        Array.isArray(accounts) &&
-        currentClientId
-      ) {
-        const account = accounts.find(
-          (item: ClientAccount) =>
-            item.id === currentClientId
-        );
-
-        if (account) {
-          return {
-            id: account.id,
-            name: account.name,
-            email: account.email,
-            contact: account.contact || "",
-          };
-        }
-      }
-    }
-
-    const legacyRaw =
-      localStorage.getItem(LEGACY_CLIENT_KEY);
-
-    if (legacyRaw) {
-      const legacy = JSON.parse(legacyRaw);
-
-      if (
-        legacy?.id &&
-        legacy?.name &&
-        legacy?.email
-      ) {
-        return {
-          id: legacy.id,
-          name: legacy.name,
-          email: legacy.email,
-          contact: legacy.contact || "",
-        };
-      }
-    }
-  } catch (error) {
-    console.error(
-      "Could not read client:",
-      error
-    );
+    return Array.isArray(parsed) ? parsed : [];
+  } catch {
+    return [];
   }
-
-  return null;
 }
 
-/* =========================================================
-   PAGE
-========================================================= */
+function mergeForm(savedForm: Partial<BriefForm>): BriefForm {
+  return {
+    ...initialForm,
+    ...savedForm,
+
+    spaces: Array.isArray(savedForm.spaces)
+      ? savedForm.spaces
+      : [],
+
+    lifestyle: Array.isArray(savedForm.lifestyle)
+      ? savedForm.lifestyle
+      : [],
+
+    designStyles: Array.isArray(savedForm.designStyles)
+      ? savedForm.designStyles
+      : [],
+
+    atmosphere: Array.isArray(savedForm.atmosphere)
+      ? savedForm.atmosphere
+      : [],
+
+    colors: Array.isArray(savedForm.colors)
+      ? savedForm.colors
+      : [],
+
+    materials: Array.isArray(savedForm.materials)
+      ? savedForm.materials
+      : [],
+
+    furniture: Array.isArray(savedForm.furniture)
+      ? savedForm.furniture
+      : [],
+
+    storage: Array.isArray(savedForm.storage)
+      ? savedForm.storage
+      : [],
+
+    kitchen: Array.isArray(savedForm.kitchen)
+      ? savedForm.kitchen
+      : [],
+
+    bathrooms: Array.isArray(savedForm.bathrooms)
+      ? savedForm.bathrooms
+      : [],
+
+    lighting: Array.isArray(savedForm.lighting)
+      ? savedForm.lighting
+      : [],
+
+    technology: Array.isArray(savedForm.technology)
+      ? savedForm.technology
+      : [],
+
+    priorities: Array.isArray(savedForm.priorities)
+      ? savedForm.priorities
+      : [],
+
+    avoid: Array.isArray(savedForm.avoid)
+      ? savedForm.avoid
+      : [],
+
+    confirmation: Boolean(savedForm.confirmation),
+  };
+}
+
+function MultiSelectGroup({
+  title,
+  description,
+  field,
+  options,
+  form,
+  onToggle,
+}: {
+  title: string;
+  description?: string;
+  field: MultiField;
+  options: string[];
+  form: BriefForm;
+  onToggle: (field: MultiField, value: string) => void;
+}) {
+  return (
+    <div className="space-y-4">
+      <div>
+        <h3 className="text-base font-semibold text-black">
+          {title}
+        </h3>
+
+        {description && (
+          <p className="mt-1 text-sm leading-6 text-black/50">
+            {description}
+          </p>
+        )}
+      </div>
+
+      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
+        {options.map((option) => {
+          const selected = form[field].includes(option);
+
+          return (
+            <button
+              key={option}
+              type="button"
+              onClick={() => onToggle(field, option)}
+              aria-pressed={selected}
+              className={`rounded-2xl border px-4 py-3 text-left text-sm transition-all ${
+                selected
+                  ? "border-[#910B0A] bg-[#910B0A] text-white shadow-sm"
+                  : "border-black/10 bg-white text-black/70 hover:border-black/25 hover:bg-black/[0.015]"
+              }`}
+            >
+              <span className="flex items-center justify-between gap-3">
+                <span>{option}</span>
+
+                {selected && (
+                  <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-white/15 text-xs">
+                    ✓
+                  </span>
+                )}
+              </span>
+            </button>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
+function SingleSelectGroup({
+  title,
+  description,
+  field,
+  options,
+  value,
+  onSelect,
+}: {
+  title: string;
+  description?: string;
+  field: SingleField;
+  options: string[];
+  value: string;
+  onSelect: (field: SingleField, value: string) => void;
+}) {
+  return (
+    <div className="space-y-4">
+      <div>
+        <h3 className="text-base font-semibold text-black">
+          {title}
+        </h3>
+
+        {description && (
+          <p className="mt-1 text-sm leading-6 text-black/50">
+            {description}
+          </p>
+        )}
+      </div>
+
+      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
+        {options.map((option) => {
+          const selected = value === option;
+
+          return (
+            <button
+              key={option}
+              type="button"
+              onClick={() => onSelect(field, option)}
+              aria-pressed={selected}
+              className={`rounded-2xl border px-4 py-3 text-left text-sm transition-all ${
+                selected
+                  ? "border-[#910B0A] bg-[#910B0A] text-white shadow-sm"
+                  : "border-black/10 bg-white text-black/70 hover:border-black/25 hover:bg-black/[0.015]"
+              }`}
+            >
+              <span className="flex items-center justify-between gap-3">
+                <span>{option}</span>
+
+                {selected && (
+                  <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-white/15 text-xs">
+                    ✓
+                  </span>
+                )}
+              </span>
+            </button>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
+function TextInput({
+  label,
+  value,
+  onChange,
+  placeholder,
+}: {
+  label: string;
+  value: string;
+  onChange: (value: string) => void;
+  placeholder?: string;
+}) {
+  return (
+    <div>
+      <label className="mb-2 block text-sm font-semibold text-black">
+        {label}
+      </label>
+
+      <input
+        type="text"
+        value={value}
+        onChange={(event) => onChange(event.target.value)}
+        placeholder={placeholder}
+        className="w-full rounded-2xl border border-black/10 bg-white px-4 py-3.5 text-sm text-black outline-none transition placeholder:text-black/30 focus:border-[#910B0A] focus:ring-2 focus:ring-[#910B0A]/10"
+      />
+    </div>
+  );
+}
+
+function TextArea({
+  label,
+  value,
+  onChange,
+  placeholder,
+  rows = 5,
+}: {
+  label: string;
+  value: string;
+  onChange: (value: string) => void;
+  placeholder?: string;
+  rows?: number;
+}) {
+  return (
+    <div>
+      <label className="mb-2 block text-sm font-semibold text-black">
+        {label}
+      </label>
+
+      <textarea
+        value={value}
+        onChange={(event) => onChange(event.target.value)}
+        placeholder={placeholder}
+        rows={rows}
+        className="w-full resize-y rounded-2xl border border-black/10 bg-white px-4 py-3.5 text-sm leading-6 text-black outline-none transition placeholder:text-black/30 focus:border-[#910B0A] focus:ring-2 focus:ring-[#910B0A]/10"
+      />
+    </div>
+  );
+}
 
 export default function FullInteriorBriefPage() {
-  const [client, setClient] =
-    useState<ClientData | null>(null);
+  const [client, setClient] = useState<ClientAccount | null>(null);
 
-  const [form, setForm] =
-    useState<BriefForm>(initialForm);
+  const [form, setForm] = useState<BriefForm>(initialForm);
 
-  const [
-    currentSection,
-    setCurrentSection,
-  ] = useState(0);
+  const [currentSection, setCurrentSection] = useState(0);
 
-  const [
-    referenceImages,
-    setReferenceImages,
-  ] = useState<File[]>([]);
+  const [isRestored, setIsRestored] = useState(false);
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [submitted, setSubmitted] = useState(false);
 
-  const [
-    autoSaveStatus,
-    setAutoSaveStatus,
-  ] = useState<AutoSaveStatus>("idle");
+  const [error, setError] = useState("");
 
-  const [error, setError] =
-    useState("");
+  const [referenceImages, setReferenceImages] = useState<File[]>(
+    []
+  );
 
-  const [submitted, setSubmitted] =
-    useState(false);
+  const [saveStatus, setSaveStatus] = useState("Saved");
 
-  const [submitting, setSubmitting] =
-    useState(false);
-
-  const [loaded, setLoaded] =
-    useState(false);
-
-  /* =======================================================
-     CLIENT INITIALIZATION
-  ======================================================= */
+  const restoredRef = useRef(false);
 
   useEffect(() => {
-    const currentClient =
-      getCurrentClient();
+    if (typeof window === "undefined") return;
 
-    if (currentClient) {
-      setClient(currentClient);
-    } else {
-      setError(
-        "Please create or log into your client profile before completing the brief."
-      );
+    const accounts = getAccounts();
+
+    const currentId = localStorage.getItem(
+      CURRENT_CLIENT_KEY
+    );
+
+    const legacyRaw = localStorage.getItem(
+      LEGACY_CLIENT_KEY
+    );
+
+    let activeClient: ClientAccount | null = null;
+
+    if (currentId) {
+      activeClient =
+        accounts.find(
+          (item) => item.id === currentId
+        ) || null;
     }
 
-    setLoaded(true);
-  }, []);
+    if (!activeClient && legacyRaw) {
+      try {
+        const parsed = JSON.parse(legacyRaw);
 
-  /* =======================================================
-     DRAFT KEY
-  ======================================================= */
-
-  const draftKey = useMemo(() => {
-    if (!client?.id) {
-      return null;
+        if (
+          parsed?.id &&
+          parsed?.name &&
+          parsed?.email
+        ) {
+          activeClient = {
+            id: parsed.id,
+            name: parsed.name,
+            email: parsed.email,
+            contact: parsed.contact || "",
+          };
+        }
+      } catch {
+        // Ignore malformed legacy client data.
+      }
     }
 
-    return `${FULL_BRIEF_DRAFT_PREFIX}${client.id}`;
-  }, [client?.id]);
-
-  /* =======================================================
-     RESTORE DRAFT
-  ======================================================= */
-
-  useEffect(() => {
-    if (
-      !loaded ||
-      !client?.id ||
-      !draftKey
-    ) {
+    if (!activeClient) {
+      restoredRef.current = true;
+      setIsRestored(true);
       return;
     }
 
-    try {
-      const saved =
-        localStorage.getItem(draftKey);
+    setClient(activeClient);
 
-      if (!saved) {
-        setAutoSaveStatus("idle");
-        return;
-      }
+    const draftKey =
+      `${FULL_BRIEF_DRAFT_PREFIX}${activeClient.id}`;
 
-      const parsed = JSON.parse(saved);
+    const rawDraft =
+      localStorage.getItem(draftKey);
 
-      if (parsed?.form) {
-        setForm({
-          ...initialForm,
-          ...parsed.form,
-        });
-      }
-
-      if (
-        typeof parsed?.currentSection ===
-        "number"
-      ) {
-        setCurrentSection(
-          Math.min(
-            Math.max(
-              parsed.currentSection,
-              0
-            ),
-            sections.length - 1
-          )
-        );
-      }
-
-      setAutoSaveStatus("saved");
-    } catch (restoreError) {
-      console.error(
-        "Could not restore brief:",
-        restoreError
-      );
-
-      setAutoSaveStatus("error");
-    }
-  }, [
-    loaded,
-    client?.id,
-    draftKey,
-  ]);
-
-  /* =======================================================
-     SAVE DRAFT
-     
-     useCallback keeps the function stable so that the
-     automatic-save effect can safely depend on it.
-  ======================================================= */
-
-  const performAutoSave = useCallback(
-    (
-      nextForm: BriefForm,
-      section = currentSection
-    ) => {
-      if (
-        !draftKey ||
-        typeof window === "undefined"
-      ) {
-        return;
-      }
-
+    if (rawDraft) {
       try {
-        setAutoSaveStatus("saving");
+        const parsed = JSON.parse(rawDraft);
 
-        localStorage.setItem(
-          draftKey,
-          JSON.stringify({
-            clientId: client?.id,
-            form: nextForm,
-            currentSection: section,
-            updatedAt:
-              new Date().toISOString(),
-          })
-        );
+        if (parsed?.form) {
+          setForm(
+            mergeForm(parsed.form)
+          );
+        }
 
-        window.setTimeout(() => {
-          setAutoSaveStatus("saved");
-        }, 250);
-      } catch (saveError) {
-        console.error(
-          "Auto-save error:",
-          saveError
-        );
-
-        setAutoSaveStatus("error");
+        if (
+          typeof parsed?.currentSection ===
+            "number" &&
+          parsed.currentSection >= 0 &&
+          parsed.currentSection <
+            sections.length
+        ) {
+          setCurrentSection(
+            parsed.currentSection
+          );
+        }
+      } catch {
+        // Ignore malformed draft.
       }
-    },
-    [
-      client?.id,
-      currentSection,
-      draftKey,
-    ]
-  );
+    }
 
-  function saveProgress() {
-    performAutoSave(
-      form,
-      currentSection
-    );
-  }
+    restoredRef.current = true;
 
-  /* =======================================================
-     AUTOMATIC FORM SAVE
-  ======================================================= */
+    setIsRestored(true);
+  }, []);
 
   useEffect(() => {
     if (
-      !loaded ||
-      !client?.id ||
-      !draftKey ||
+      !client ||
+      !isRestored ||
+      !restoredRef.current ||
       submitted
     ) {
       return;
     }
 
-    const timeout =
-      window.setTimeout(() => {
-        performAutoSave(
-          form,
-          currentSection
+    setSaveStatus("Saving...");
+
+    const timer = window.setTimeout(() => {
+      try {
+        localStorage.setItem(
+          `${FULL_BRIEF_DRAFT_PREFIX}${client.id}`,
+          JSON.stringify({
+            form,
+            currentSection,
+            updatedAt:
+              new Date().toISOString(),
+          })
         );
-      }, 700);
+
+        setSaveStatus("Saved");
+      } catch {
+        setSaveStatus("Unable to save");
+      }
+    }, 700);
 
     return () =>
-      window.clearTimeout(timeout);
+      window.clearTimeout(timer);
   }, [
+    client,
     form,
     currentSection,
-    loaded,
-    client?.id,
-    draftKey,
+    isRestored,
     submitted,
-    performAutoSave,
   ]);
 
-  /* =======================================================
-     UPDATE HELPERS
-  ======================================================= */
-
-  function updateField<
-    K extends keyof BriefForm
-  >(
+  function updateField<K extends keyof BriefForm>(
     field: K,
     value: BriefForm[K]
   ) {
@@ -439,249 +847,45 @@ export default function FullInteriorBriefPage() {
     }));
   }
 
-  function toggleArrayValue(
-    field:
-      | "spaces"
-      | "lifestyle"
-      | "designStyles"
-      | "atmosphere"
-      | "colors"
-      | "materials"
-      | "furniture"
-      | "storage"
-      | "kitchen"
-      | "bathrooms"
-      | "lighting"
-      | "technology"
-      | "priorities"
-      | "avoid",
+  function toggleMultiSelect(
+    field: MultiField,
     value: string
   ) {
     setForm((previous) => {
-      const existing =
-        previous[field];
+      const current = previous[field];
 
-      const exists =
-        existing.includes(value);
+      const next = current.includes(value)
+        ? current.filter(
+            (item) => item !== value
+          )
+        : [...current, value];
 
       return {
         ...previous,
-        [field]: exists
-          ? existing.filter(
-              (item) => item !== value
-            )
-          : [...existing, value],
+        [field]: next,
       };
     });
   }
 
-  /* =======================================================
-     UI HELPERS
-  ======================================================= */
-
-  function inputClassName() {
-    return "w-full rounded-xl border border-black/10 bg-white px-4 py-3.5 text-sm text-black outline-none transition placeholder:text-black/25 focus:border-[#910B0A] focus:ring-1 focus:ring-[#910B0A]";
-  }
-
-  function textareaClassName() {
-    return "min-h-[130px] w-full resize-y rounded-xl border border-black/10 bg-white px-4 py-3.5 text-sm leading-6 text-black outline-none transition placeholder:text-black/25 focus:border-[#910B0A] focus:ring-1 focus:ring-[#910B0A]";
-  }
-
-  function optionButton(
-    selected: boolean
+  function selectSingle(
+    field: SingleField,
+    value: string
   ) {
-    return `rounded-xl border px-4 py-3 text-left text-sm text-black transition ${
-      selected
-        ? "border-[#910B0A] bg-[#910B0A]/5"
-        : "border-black/10 bg-white hover:border-black/25"
-    }`;
+    setForm((previous) => ({
+      ...previous,
+      [field]: value,
+    }));
   }
 
-  function renderOptions(
-    field:
-      | "spaces"
-      | "lifestyle"
-      | "designStyles"
-      | "atmosphere"
-      | "colors"
-      | "materials"
-      | "furniture"
-      | "storage"
-      | "kitchen"
-      | "bathrooms"
-      | "lighting"
-      | "technology"
-      | "priorities"
-      | "avoid",
-    options: string[]
-  ) {
-    return (
-      <div className="grid gap-3 sm:grid-cols-2">
-        {options.map((option) => {
-          const selected =
-            form[field].includes(option);
-
-          return (
-            <button
-              key={option}
-              type="button"
-              onClick={() =>
-                toggleArrayValue(
-                  field,
-                  option
-                )
-              }
-              className={optionButton(
-                selected
-              )}
-            >
-              <div className="flex items-center gap-3">
-                <span
-                  className={`flex h-5 w-5 shrink-0 items-center justify-center rounded-md border text-[10px] font-bold ${
-                    selected
-                      ? "border-[#910B0A] bg-[#910B0A] text-white"
-                      : "border-black/15 bg-white"
-                  }`}
-                  style={
-                    !selected
-                      ? {
-                          color:
-                            "transparent",
-                        }
-                      : undefined
-                  }
-                >
-                  ✓
-                </span>
-
-                <span
-                  className="text-black"
-                  style={{
-                    color: selected
-                      ? RED
-                      : "#111111",
-                  }}
-                >
-                  {option}
-                </span>
-              </div>
-            </button>
-          );
-        })}
-      </div>
-    );
-  }
-
-  function renderAutoSaveStatus() {
+  function goToSection(index: number) {
     if (
-      autoSaveStatus === "saving"
+      index < 0 ||
+      index >= sections.length
     ) {
-      return (
-        <span className="text-[10px] font-medium text-black/35">
-          Saving...
-        </span>
-      );
-    }
-
-    if (
-      autoSaveStatus === "saved"
-    ) {
-      return (
-        <span className="text-[10px] font-medium text-green-600">
-          ✓ Saved
-        </span>
-      );
-    }
-
-    if (
-      autoSaveStatus === "error"
-    ) {
-      return (
-        <span className="text-[10px] font-medium text-[#910B0A]">
-          Save failed
-        </span>
-      );
-    }
-
-    return (
-      <span className="text-[10px] font-medium text-black/25">
-        Auto-save on
-      </span>
-    );
-  }
-
-  /* =======================================================
-     PROGRESS
-  ======================================================= */
-
-  const progress =
-    ((currentSection + 1) /
-      sections.length) *
-    100;
-
-  /* =======================================================
-     VALIDATION
-  ======================================================= */
-
-  function validateCurrentSection() {
-    if (currentSection === 0) {
-      if (
-        !form.projectName.trim()
-      ) {
-        return "Please enter your project name.";
-      }
-
-      if (
-        !form.projectLocation.trim()
-      ) {
-        return "Please enter the project location.";
-      }
-
-      if (!form.projectType) {
-        return "Please select the property type.";
-      }
-
-      if (!form.projectStatus) {
-        return "Please select the property status.";
-      }
-    }
-
-    if (currentSection === 9) {
-      if (!form.confirmation) {
-        return "Please confirm that the information provided is accurate before submitting.";
-      }
-    }
-
-    return "";
-  }
-
-  /* =======================================================
-     NAVIGATION
-  ======================================================= */
-
-  function nextSection() {
-    const validation =
-      validateCurrentSection();
-
-    if (validation) {
-      setError(validation);
       return;
     }
 
-    setError("");
-
-    const nextIndex =
-      Math.min(
-        currentSection + 1,
-        sections.length - 1
-      );
-
-    performAutoSave(
-      form,
-      nextIndex
-    );
-
-    setCurrentSection(nextIndex);
+    setCurrentSection(index);
 
     window.scrollTo({
       top: 0,
@@ -689,28 +893,24 @@ export default function FullInteriorBriefPage() {
     });
   }
 
-  function previousSection() {
-    setError("");
-
-    const previousIndex =
-      Math.max(
-        currentSection - 1,
-        0
+  function goNext() {
+    if (
+      currentSection <
+      sections.length - 1
+    ) {
+      goToSection(
+        currentSection + 1
       );
-
-    setCurrentSection(
-      previousIndex
-    );
-
-    window.scrollTo({
-      top: 0,
-      behavior: "smooth",
-    });
+    }
   }
 
-  /* =======================================================
-     REFERENCE IMAGES
-  ======================================================= */
+  function goPrevious() {
+    if (currentSection > 0) {
+      goToSection(
+        currentSection - 1
+      );
+    }
+  }
 
   function handleReferenceImages(
     event: ChangeEvent<HTMLInputElement>
@@ -719,50 +919,64 @@ export default function FullInteriorBriefPage() {
       event.target.files || []
     );
 
-    setError("");
+    if (!files.length) return;
 
-    if (
-      files.length >
-      MAX_REFERENCE_IMAGES
-    ) {
-      setError(
-        `You can upload a maximum of ${MAX_REFERENCE_IMAGES} reference images.`
-      );
+    const validFiles: File[] = [];
+    const errors: string[] = [];
 
-      event.target.value = "";
-      return;
-    }
-
-    const invalidFile =
-      files.find((file) => {
-        const validType =
-          file.type ===
-            "image/jpeg" ||
-          file.type ===
-            "image/jpg" ||
-          file.type ===
-            "image/png";
-
-        const validSize =
-          file.size <=
-          5 * 1024 * 1024;
-
-        return (
-          !validType ||
-          !validSize
+    for (const file of files) {
+      if (
+        referenceImages.length +
+          validFiles.length >=
+        MAX_REFERENCE_IMAGES
+      ) {
+        errors.push(
+          `Maximum of ${MAX_REFERENCE_IMAGES} images allowed.`
         );
-      });
+        break;
+      }
 
-    if (invalidFile) {
-      setError(
-        `"${invalidFile.name}" is not supported or is larger than 5 MB. Please use JPEG or PNG images under 5 MB.`
-      );
+      if (
+        ![
+          "image/jpeg",
+          "image/png",
+        ].includes(file.type)
+      ) {
+        errors.push(
+          `${file.name}: only JPG and PNG images are allowed.`
+        );
+        continue;
+      }
 
-      event.target.value = "";
-      return;
+      if (
+        file.size >
+        5 * 1024 * 1024
+      ) {
+        errors.push(
+          `${file.name}: image must be 5MB or smaller.`
+        );
+        continue;
+      }
+
+      validFiles.push(file);
     }
 
-    setReferenceImages(files);
+    if (validFiles.length) {
+      setReferenceImages(
+        (previous) => [
+          ...previous,
+          ...validFiles,
+        ]
+      );
+    }
+
+    if (errors.length) {
+      setError(errors.join(" "));
+    } else {
+      setError("");
+    }
+
+    event.target.value = "";
   }
 
   function removeReferenceImage(
@@ -771,39 +985,70 @@ export default function FullInteriorBriefPage() {
     setReferenceImages(
       (previous) =>
         previous.filter(
-          (_, itemIndex) =>
-            itemIndex !== index
+          (_, fileIndex) =>
+            fileIndex !== index
         )
     );
   }
 
-  /* =======================================================
-     COMPLETE BRIEF
-  ======================================================= */
-
-  async function completeBrief() {
+  function validateBeforeSubmit() {
     if (!client) {
-      setError(
-        "Your client profile could not be found. Please return to the Client Portal and log in again."
-      );
-
-      return;
+      return "Client information could not be found. Please return to your client portal.";
     }
 
-    const validation =
-      validateCurrentSection();
-
-    if (validation) {
-      setError(validation);
-      return;
+    if (!form.projectName.trim()) {
+      return "Please enter a project name.";
     }
+
+    if (!form.projectLocation.trim()) {
+      return "Please enter the project location.";
+    }
+
+    if (!form.projectType) {
+      return "Please select a project type.";
+    }
+
+    if (!form.projectStatus) {
+      return "Please select the current project status.";
+    }
+
+    if (!form.spaces.length) {
+      return "Please select at least one space.";
+    }
+
+    if (!form.confirmation) {
+      return "Please confirm that the information provided is accurate.";
+    }
+
+    return "";
+  }
+
+  async function handleSubmit(
+    event: FormEvent<HTMLFormElement>
+  ) {
+    event.preventDefault();
 
     setError("");
-    setSubmitting(true);
-    setSubmitted(false);
+
+    const validationError =
+      validateBeforeSubmit();
+
+    if (validationError) {
+      setError(validationError);
+      return;
+    }
+
+    if (!client) {
+      setError(
+        "Client information could not be found."
+      );
+      return;
+    }
+
+    setIsSubmitting(true);
 
     try {
-      const briefData: BriefData = {
+      const briefData = {
         client: {
           id: client.id,
           name: client.name,
@@ -816,36 +1061,7 @@ export default function FullInteriorBriefPage() {
         },
       };
 
-      /* -----------------------------------------------
-         FINAL LOCAL SAVE
-      ------------------------------------------------ */
-
-      if (draftKey) {
-        try {
-          localStorage.setItem(
-            draftKey,
-            JSON.stringify({
-              clientId: client.id,
-              form,
-              currentSection,
-              updatedAt:
-                new Date().toISOString(),
-            })
-          );
-        } catch (storageError) {
-          console.error(
-            "Could not save final draft:",
-            storageError
-          );
-        }
-      }
-
-      /* -----------------------------------------------
-         FORM DATA
-      ------------------------------------------------ */
-
-      const formData =
-        new FormData();
+      const formData = new FormData();
 
       formData.append(
         "briefType",
@@ -854,9 +1070,7 @@ export default function FullInteriorBriefPage() {
 
       formData.append(
         "briefData",
-        JSON.stringify(
-          briefData
-        )
+        JSON.stringify(briefData)
       );
 
       referenceImages.forEach(
@@ -869,1522 +1083,825 @@ export default function FullInteriorBriefPage() {
         }
       );
 
-      /* -----------------------------------------------
-         SUBMIT TO UNIFIED API
-         
-         API ROUTE:
-         app/api/send-brief/route.ts
-         
-         BROWSER ENDPOINT:
-         /api/send-brief
-      ------------------------------------------------ */
-
-      const response =
-        await fetch(
-          "/api/send-brief",
-          {
-            method: "POST",
-            body: formData,
-          }
-        );
-
-      /* -----------------------------------------------
-         SAFELY READ RESPONSE
-      ------------------------------------------------ */
-
-      const responseText =
-        await response.text();
+      const response = await fetch(
+        "/api/send-brief",
+        {
+          method: "POST",
+          body: formData,
+        }
+      );
 
       let result: any = null;
 
       try {
-        result =
-          responseText.trim()
-            ? JSON.parse(
-                responseText
-              )
-            : null;
-      } catch (jsonError) {
-        console.error(
-          "API returned a non-JSON response:",
-          responseText
-        );
-
-        throw new Error(
-          `The submission server returned an unexpected response (${response.status}). Please try again.`
-        );
+        result = await response.json();
+      } catch {
+        result = null;
       }
 
-      if (
-        !response.ok ||
-        !result?.success
-      ) {
+      if (!response.ok) {
         throw new Error(
           result?.error ||
-            `Unable to submit your brief. Server returned ${response.status}.`
+            "We could not submit your brief. Please try again."
         );
       }
 
-      /* -----------------------------------------------
-         CACHE DOCUMENT LOCALLY
-      ------------------------------------------------ */
+      try {
+        localStorage.removeItem(
+          `${FULL_BRIEF_DRAFT_PREFIX}${client.id}`
+        );
+      } catch {
+        // Ignore cleanup errors.
+      }
 
-      if (
-        result.documentId
-      ) {
+      if (result?.document) {
         try {
-          const existing =
+          const existingRaw =
             localStorage.getItem(
               "kbxClientDocuments"
             );
 
-          const documents =
-            existing
-              ? JSON.parse(existing)
-              : [];
+          const existing =
+            existingRaw
+              ? JSON.parse(existingRaw)
+              : {};
 
-          const newDocument = {
-            id: result.documentId,
+          const clientDocuments =
+            existing &&
+            typeof existing ===
+              "object"
+              ? existing
+              : {};
 
-            clientId:
-              client.id,
-
-            projectName:
-              form.projectName ||
-              "Full Interior Project",
-
-            documentName:
-              result.document
-                ?.documentName ||
-              `${
-                form.projectName ||
-                "Full_Interior_Project"
-              }_Full_Interior_Brief.pdf`,
-
-            documentType:
-              "full_interior_brief",
-
-            createdAt:
-              result.document
-                ?.createdAt ||
-              new Date().toISOString(),
-          };
-
-          const updated =
-            Array.isArray(
-              documents
+          if (
+            !Array.isArray(
+              clientDocuments[
+                client.id
+              ]
             )
-              ? [
-                  ...documents.filter(
-                    (document: {
-                      id?: string;
-                    }) =>
-                      document.id !==
-                      result.documentId
-                  ),
-                  newDocument,
-                ]
-              : [newDocument];
+          ) {
+            clientDocuments[
+              client.id
+            ] = [];
+          }
+
+          clientDocuments[
+            client.id
+          ].unshift(
+            result.document
+          );
 
           localStorage.setItem(
             "kbxClientDocuments",
             JSON.stringify(
-              updated
+              clientDocuments
             )
           );
-        } catch (
-          storageError
-        ) {
-          console.error(
-            "Could not cache document:",
-            storageError
-          );
-        }
-      }
-
-      /* -----------------------------------------------
-         REMOVE EDITABLE DRAFT
-      ------------------------------------------------ */
-
-      if (draftKey) {
-        try {
-          localStorage.removeItem(
-            draftKey
-          );
-        } catch (removeError) {
-          console.error(
-            "Could not remove draft:",
-            removeError
-          );
+        } catch {
+          // Optional local document cache.
         }
       }
 
       setSubmitted(true);
-      setAutoSaveStatus("saved");
-      setError("");
+      setSaveStatus("Submitted");
 
       window.scrollTo({
         top: 0,
         behavior: "smooth",
       });
     } catch (submissionError) {
-      console.error(
-        "Brief submission error:",
-        submissionError
-      );
-
       setError(
-        submissionError instanceof
-          Error
+        submissionError instanceof Error
           ? submissionError.message
-          : "Unable to submit the brief. Please try again."
+          : "Something went wrong while submitting the brief."
       );
     } finally {
-      setSubmitting(false);
+      setIsSubmitting(false);
     }
   }
 
-  /* =======================================================
-     RENDER SECTION
-  ======================================================= */
+  const current =
+    sections[currentSection];
 
-  function renderSection() {
-    /* =======================================================
-       SECTION 01
-    ======================================================= */
-
-    if (currentSection === 0) {
-      return (
-        <div className="space-y-10">
-          <div>
-            <label className="mb-2 block text-xs font-semibold text-black/60">
-              Project Name *
-            </label>
-
-            <input
-              type="text"
-              value={form.projectName}
-              onChange={(event) =>
-                updateField(
-                  "projectName",
-                  event.target.value
-                )
-              }
-              placeholder="e.g. Otoo Residence"
-              className={inputClassName()}
-            />
-          </div>
-
-          <div>
-            <label className="mb-2 block text-xs font-semibold text-black/60">
-              Project Location *
-            </label>
-
-            <input
-              type="text"
-              value={form.projectLocation}
-              onChange={(event) =>
-                updateField(
-                  "projectLocation",
-                  event.target.value
-                )
-              }
-              placeholder="e.g. East Legon, Accra"
-              className={inputClassName()}
-            />
-          </div>
-
-          <div>
-            <p className="mb-3 text-xs font-semibold text-black/60">
-              Property Type *
-            </p>
-
-            {renderOptionsSingle(
-              form.projectType,
-              [
-                "Apartment",
-                "Detached House",
-                "Semi-Detached House",
-                "Townhouse",
-                "Penthouse",
-                "Office",
-                "Commercial Space",
-                "Other",
-              ],
-              (value) =>
-                updateField(
-                  "projectType",
-                  value
-                )
-            )}
-          </div>
-
-          <div>
-            <p className="mb-3 text-xs font-semibold text-black/60">
-              Property Status *
-            </p>
-
-            {renderOptionsSingle(
-              form.projectStatus,
-              [
-                "New Build",
-                "Under Construction",
-                "Recently Purchased",
-                "Existing Home",
-                "Renovation",
-                "Rental Property",
-                "Other",
-              ],
-              (value) =>
-                updateField(
-                  "projectStatus",
-                  value
-                )
-            )}
-          </div>
-        </div>
+  const completionPercentage =
+    useMemo(() => {
+      return Math.round(
+        ((currentSection + 1) /
+          sections.length) *
+          100
       );
-    }
+    }, [currentSection]);
 
-    /* =======================================================
-       SECTION 02
-    ======================================================= */
-
-    if (currentSection === 1) {
-      return (
-        <div className="space-y-10">
-          <div>
-            <p className="mb-3 text-xs font-semibold text-black/60">
-              Which areas would you like us to design?
-            </p>
-
-            {renderOptions(
-              "spaces",
-              [
-                "Living Room",
-                "Dining Area",
-                "Kitchen",
-                "Master Bedroom",
-                "Other Bedrooms",
-                "Walk-in Closet",
-                "Bathrooms",
-                "Home Office",
-                "Entrance / Foyer",
-                "Corridor",
-                "Outdoor / Terrace",
-                "Entertainment Area",
-              ]
-            )}
-          </div>
-
-          <div>
-            <p className="mb-3 text-xs font-semibold text-black/60">
-              Who will primarily use the space?
-            </p>
-
-            {renderOptions(
-              "lifestyle",
-              [
-                "Single Occupant",
-                "Couple",
-                "Family",
-                "Children",
-                "Guests",
-                "Domestic Staff",
-                "Work-from-home",
-                "Frequent Entertaining",
-              ]
-            )}
-          </div>
-        </div>
-      );
-    }
-
-    /* =======================================================
-       SECTION 03
-    ======================================================= */
-
-    if (currentSection === 2) {
-      return (
-        <div className="space-y-10">
-          <div>
-            <p className="mb-3 text-xs font-semibold text-black/60">
-              Which design styles appeal to you?
-            </p>
-
-            {renderOptions(
-              "designStyles",
-              [
-                "Modern",
-                "Contemporary",
-                "Minimalist",
-                "Luxury",
-                "Classic",
-                "Transitional",
-                "Industrial",
-                "Scandinavian",
-                "Japandi",
-                "African Contemporary",
-                "Organic / Natural",
-                "Eclectic",
-              ]
-            )}
-          </div>
-
-          <div>
-            <p className="mb-3 text-xs font-semibold text-black/60">
-              What atmosphere should the space have?
-            </p>
-
-            {renderOptions(
-              "atmosphere",
-              [
-                "Warm & Cozy",
-                "Calm & Serene",
-                "Elegant",
-                "Luxurious",
-                "Bold & Dramatic",
-                "Bright & Airy",
-                "Natural",
-                "Sophisticated",
-                "Minimal",
-                "Creative",
-              ]
-            )}
-          </div>
-
-          <div>
-            <p className="mb-3 text-xs font-semibold text-black/60">
-              What colour directions do you prefer?
-            </p>
-
-            {renderOptions(
-              "colors",
-              [
-                "Warm Neutrals",
-                "Cool Neutrals",
-                "Earth Tones",
-                "White & Minimal",
-                "Black & Contrast",
-                "Greige",
-                "Wood Tones",
-                "Deep / Moody Colours",
-                "Soft Pastels",
-                "Bold Accent Colours",
-              ]
-            )}
-          </div>
-        </div>
-      );
-    }
-
-    /* =======================================================
-       SECTION 04
-    ======================================================= */
-
-    if (currentSection === 3) {
-      return (
-        <div className="space-y-10">
-          <div>
-            <p className="mb-3 text-xs font-semibold text-black/60">
-              Which materials and finishes interest you?
-            </p>
-
-            {renderOptions(
-              "materials",
-              [
-                "Natural Wood",
-                "Wood Grain Melamine",
-                "Super Matte",
-                "High Gloss",
-                "Natural Stone",
-                "Quartz",
-                "Marble",
-                "Porcelain",
-                "Metal",
-                "Glass",
-                "Microcement",
-                "Textured Finishes",
-                "Veneer",
-                "Thermal Foil",
-              ]
-            )}
-          </div>
-
-          <div>
-            <label className="mb-2 block text-xs font-semibold text-black/60">
-              Tell us about any specific material or finish you already have in mind.
-            </label>
-
-            <textarea
-              value={form.materialNotes}
-              onChange={(event) =>
-                updateField(
-                  "materialNotes",
-                  event.target.value
-                )
-              }
-              placeholder="Tell us anything specific you would like us to consider..."
-              className={textareaClassName()}
-            />
-          </div>
-        </div>
-      );
-    }
-
-    /* =======================================================
-       SECTION 05
-    ======================================================= */
-
-    if (currentSection === 4) {
-      return (
-        <div className="space-y-10">
-          <div>
-            <p className="mb-3 text-xs font-semibold text-black/60">
-              Furniture requirements
-            </p>
-
-            {renderOptions(
-              "furniture",
-              [
-                "Sofa / Sectional",
-                "Accent Chairs",
-                "Coffee Table",
-                "TV Console",
-                "Dining Table",
-                "Dining Chairs",
-                "Bed",
-                "Bedside Tables",
-                "Dressing Table",
-                "Home Office Desk",
-                "Bookshelves",
-                "Custom Furniture",
-              ]
-            )}
-          </div>
-
-          <div>
-            <p className="mb-3 text-xs font-semibold text-black/60">
-              Storage requirements
-            </p>
-
-            {renderOptions(
-              "storage",
-              [
-                "Built-in Wardrobes",
-                "Walk-in Closet",
-                "Kitchen Cabinets",
-                "TV Storage",
-                "Display Cabinets",
-                "Bookshelves",
-                "Entryway Storage",
-                "Laundry Storage",
-                "Home Office Storage",
-                "Hidden Storage",
-                "Custom Joinery",
-              ]
-            )}
-          </div>
-        </div>
-      );
-    }
-
-    /* =======================================================
-       SECTION 06
-    ======================================================= */
-
-    if (currentSection === 5) {
-      return (
-        <div className="space-y-10">
-          <div>
-            <p className="mb-3 text-xs font-semibold text-black/60">
-              Kitchen requirements
-            </p>
-
-            {renderOptions(
-              "kitchen",
-              [
-                "Full Kitchen Design",
-                "Island",
-                "Breakfast Bar",
-                "Tall Unit",
-                "Built-in Oven",
-                "Microwave",
-                "Hob",
-                "Extractor",
-                "Integrated Refrigerator",
-                "Pantry Storage",
-                "Wine Storage",
-                "Open Shelving",
-                "Utility / Laundry Area",
-              ]
-            )}
-          </div>
-
-          <div>
-            <p className="mb-3 text-xs font-semibold text-black/60">
-              Bathroom requirements
-            </p>
-
-            {renderOptions(
-              "bathrooms",
-              [
-                "Vanity Unit",
-                "Double Vanity",
-                "Walk-in Shower",
-                "Bathtub",
-                "Wall-Hung WC",
-                "Mirrored Cabinet",
-                "Storage",
-                "Feature Wall",
-                "Natural Stone",
-                "Large Format Tiles",
-                "Hotel-style Bathroom",
-              ]
-            )}
-          </div>
-        </div>
-      );
-    }
-
-    /* =======================================================
-       SECTION 07
-    ======================================================= */
-
-    if (currentSection === 6) {
-      return (
-        <div className="space-y-10">
-          <div>
-            <p className="mb-3 text-xs font-semibold text-black/60">
-              Lighting preferences
-            </p>
-
-            {renderOptions(
-              "lighting",
-              [
-                "Recessed Downlights",
-                "Pendant Lights",
-                "Wall Lights",
-                "LED Strip Lighting",
-                "Cove Lighting",
-                "Feature Lighting",
-                "Under-Cabinet Lighting",
-                "Warm Lighting",
-                "Cool Lighting",
-                "Dimmable Lighting",
-                "Smart Lighting",
-              ]
-            )}
-          </div>
-
-          <div>
-            <p className="mb-3 text-xs font-semibold text-black/60">
-              Technology / smart-home requirements
-            </p>
-
-            {renderOptions(
-              "technology",
-              [
-                "Smart Lighting",
-                "Smart Switches",
-                "Automated Curtains",
-                "Home Theatre",
-                "TV / Media System",
-                "Multi-room Audio",
-                "Security System",
-                "Smart Locks",
-                "Voice Control",
-                "Wi-Fi / Networking",
-                "No Special Requirements",
-              ]
-            )}
-          </div>
-        </div>
-      );
-    }
-
-    /* =======================================================
-       SECTION 08
-    ======================================================= */
-
-    if (currentSection === 7) {
-      return (
-        <div className="space-y-10">
-          <div>
-            <p className="mb-3 text-xs font-semibold text-black/60">
-              What matters most to you?
-            </p>
-
-            {renderOptions(
-              "priorities",
-              [
-                "Aesthetic Appeal",
-                "Functionality",
-                "Storage",
-                "Comfort",
-                "Durability",
-                "Luxury",
-                "Low Maintenance",
-                "Budget Efficiency",
-                "Entertainment",
-                "Family-Friendly Design",
-                "Resale Value",
-                "Timelessness",
-              ]
-            )}
-          </div>
-
-          <div>
-            <p className="mb-3 text-xs font-semibold text-black/60">
-              Is there anything you definitely want to avoid?
-            </p>
-
-            {renderOptions(
-              "avoid",
-              [
-                "Too Much Colour",
-                "Too Much Wood",
-                "Glossy Finishes",
-                "Dark Interiors",
-                "Very Minimal Design",
-                "Traditional Styling",
-                "Open Shelving",
-                "Visible Clutter",
-                "Heavy Furniture",
-                "Overly Decorative Design",
-              ]
-            )}
-          </div>
-
-          <div>
-            <label className="mb-2 block text-xs font-semibold text-black/60">
-              Other things you want us to avoid
-            </label>
-
-            <textarea
-              value={form.avoidNotes}
-              onChange={(event) =>
-                updateField(
-                  "avoidNotes",
-                  event.target.value
-                )
-              }
-              placeholder="Describe anything you definitely do not want..."
-              className={textareaClassName()}
-            />
-          </div>
-        </div>
-      );
-    }
-
-    /* =======================================================
-       SECTION 09
-    ======================================================= */
-
-    if (currentSection === 8) {
-      return (
-        <div className="space-y-10">
-          <div>
-            <p className="mb-3 text-xs font-semibold text-black/60">
-              When would you ideally like the project completed?
-            </p>
-
-            {renderOptionsSingle(
-              form.timeline,
-              [
-                "As soon as possible",
-                "Within 1–3 months",
-                "Within 3–6 months",
-                "Within 6–12 months",
-                "More than 12 months",
-                "No fixed timeline",
-              ],
-              (value) =>
-                updateField(
-                  "timeline",
-                  value
-                )
-            )}
-          </div>
-
-          <div>
-            <label className="mb-2 block text-xs font-semibold text-black/60">
-              Absolute must-haves
-            </label>
-
-            <textarea
-              value={form.mustHaves}
-              onChange={(event) =>
-                updateField(
-                  "mustHaves",
-                  event.target.value
-                )
-              }
-              placeholder="What are the things your finished space absolutely must have?"
-              className={textareaClassName()}
-            />
-          </div>
-
-          <div>
-            <label className="mb-2 block text-xs font-semibold text-black/60">
-              Additional notes
-            </label>
-
-            <textarea
-              value={form.additionalNotes}
-              onChange={(event) =>
-                updateField(
-                  "additionalNotes",
-                  event.target.value
-                )
-              }
-              placeholder="Anything else you would like the KBX design team to know..."
-              className={textareaClassName()}
-            />
-          </div>
-
-          <div>
-            <p className="mb-3 text-xs font-semibold text-black/60">
-              Reference Images
-            </p>
-
-            <div className="rounded-2xl border border-dashed border-black/15 bg-[#fafaf8] p-6">
-              <input
-                id="reference-images"
-                type="file"
-                accept="image/jpeg,image/png"
-                multiple
-                onChange={
-                  handleReferenceImages
-                }
-                className="block w-full text-xs text-black/50 file:mr-4 file:rounded-lg file:border-0 file:bg-black file:px-4 file:py-2 file:text-xs file:font-medium file:text-white"
+  if (submitted) {
+    return (
+      <main className="min-h-screen bg-[#f7f7f5] text-black">
+        <header className="border-b border-black/10 bg-white">
+          <div className="mx-auto flex h-[100px] max-w-[1400px] items-center justify-between px-5 sm:px-8 lg:px-10">
+            <div className="relative h-[64px] w-[130px] shrink-0 sm:h-[70px] sm:w-[140px]">
+              <Image
+                src="/kbx-logo.svg"
+                alt="KBX Spatial Atelier"
+                fill
+                priority
+                sizes="140px"
+                className="object-contain object-left"
               />
-
-              <p className="mt-3 text-[11px] leading-5 text-black/35">
-                Upload up to 8 JPEG or PNG reference images. Each image must be 5 MB or less.
-              </p>
             </div>
 
-            {referenceImages.length >
-              0 && (
-              <div className="mt-5 grid gap-3 sm:grid-cols-2">
-                {referenceImages.map(
-                  (
-                    file,
-                    index
-                  ) => (
-                    <div
-                      key={`${file.name}-${index}`}
-                      className="flex items-center justify-between rounded-xl border border-black/10 px-4 py-3"
-                    >
-                      <div className="min-w-0">
-                        <p className="truncate text-xs font-medium text-black/70">
-                          {file.name}
-                        </p>
-
-                        <p className="mt-1 text-[10px] text-black/35">
-                          {(
-                            file.size /
-                            1024 /
-                            1024
-                          ).toFixed(
-                            2
-                          )}{" "}
-                          MB
-                        </p>
-                      </div>
-
-                      <button
-                        type="button"
-                        onClick={() =>
-                          removeReferenceImage(
-                            index
-                          )
-                        }
-                        className="ml-3 text-[10px] font-semibold text-[#910B0A]"
-                      >
-                        Remove
-                      </button>
-                    </div>
-                  )
-                )}
-              </div>
-            )}
-          </div>
-        </div>
-      );
-    }
-
-    /* =======================================================
-       SECTION 10
-    ======================================================= */
-
-    return (
-      <div className="space-y-8">
-        <div className="rounded-2xl bg-[#f7f7f5] p-6">
-          <p className="text-xs font-semibold uppercase tracking-[0.15em] text-black/35">
-            Almost there
-          </p>
-
-          <h3 className="mt-3 text-xl font-semibold">
-            Review your information
-          </h3>
-
-          <p className="mt-3 text-sm leading-6 text-black/45">
-            Please confirm that the information
-            you have provided is accurate and that
-            KBX Spatial Atelier may use it as the
-            basis for your interior design
-            consultation and proposal.
-          </p>
-        </div>
-
-        <button
-          type="button"
-          onClick={() =>
-            updateField(
-              "confirmation",
-              !form.confirmation
-            )
-          }
-          className={optionButton(
-            form.confirmation
-          )}
-        >
-          <div className="flex items-start gap-4">
-            <span
-              className={`mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded-md border text-[10px] font-bold ${
-                form.confirmation
-                  ? "border-[#910B0A] bg-[#910B0A] text-white"
-                  : "border-black/15 bg-white"
-              }`}
-              style={
-                !form.confirmation
-                  ? {
-                      color:
-                        "transparent",
-                    }
-                  : undefined
-              }
-            >
-              ✓
-            </span>
-
-            <span
-              className="text-sm leading-6"
-              style={{
-                color:
-                  form.confirmation
-                    ? RED
-                    : "#111111",
-              }}
-            >
-              I confirm that the information
-              provided in this brief is accurate
-              to the best of my knowledge, and I
-              understand that KBX Spatial Atelier
-              will use it to understand my project
-              requirements.
-            </span>
-          </div>
-        </button>
-
-        <div className="rounded-2xl border border-black/10 p-5">
-          <p className="text-[10px] font-semibold uppercase tracking-[0.15em] text-black/35">
-            Submission
-          </p>
-
-          <p className="mt-3 text-sm leading-6 text-black/50">
-            Once you click{" "}
-            <strong className="text-black/70">
-              Complete Brief
-            </strong>
-            , KBX will generate a PDF summary of
-            your brief, save it securely to your
-            Client Portal, and send the submission
-            to the KBX team.
-          </p>
-        </div>
-      </div>
-    );
-  }
-
-  /* =======================================================
-     SINGLE SELECT OPTIONS
-  ======================================================= */
-
-  function renderOptionsSingle(
-    selected: string,
-    options: string[],
-    onChange: (
-      value: string
-    ) => void
-  ) {
-    return (
-      <div className="grid gap-3 sm:grid-cols-2">
-        {options.map((option) => {
-          const isSelected =
-            selected === option;
-
-          return (
-            <button
-              key={option}
-              type="button"
-              onClick={() =>
-                onChange(option)
-              }
-              className={optionButton(
-                isSelected
-              )}
-            >
-              <div className="flex items-center gap-3">
-                <span
-                  className={`flex h-5 w-5 shrink-0 items-center justify-center rounded-full border ${
-                    isSelected
-                      ? "border-[#910B0A]"
-                      : "border-black/15"
-                  }`}
-                >
-                  {isSelected && (
-                    <span
-                      className="h-2.5 w-2.5 rounded-full"
-                      style={{
-                        backgroundColor:
-                          RED,
-                      }}
-                    />
-                  )}
-                </span>
-
-                <span
-                  className="text-black"
-                  style={{
-                    color: isSelected
-                      ? RED
-                      : "#111111",
-                  }}
-                >
-                  {option}
-                </span>
-              </div>
-            </button>
-          );
-        })}
-      </div>
-    );
-  }
-
-  /* =======================================================
-     LOADING
-  ======================================================= */
-
-  if (!loaded) {
-    return (
-      <main className="min-h-screen bg-[#f7f7f5]">
-        <div className="flex min-h-screen items-center justify-center">
-          <div className="text-center">
-            <div className="mx-auto h-8 w-8 animate-spin rounded-full border-2 border-black/10 border-t-[#910B0A]" />
-
-            <p className="mt-4 text-xs text-black/40">
-              Loading your brief...
-            </p>
-          </div>
-        </div>
-      </main>
-    );
-  }
-
-  /* =======================================================
-     NO CLIENT
-  ======================================================= */
-
-  if (!client) {
-    return (
-      <main className="min-h-screen bg-[#f7f7f5]">
-        <header className="border-b border-black/10 bg-white px-5 py-5 md:px-8">
-          <div className="mx-auto flex max-w-[1400px] items-center justify-between">
             <Link
-              href="/"
-              className="flex items-center"
+              href="/client-portal"
+              className="rounded-full border border-black/10 px-4 py-2 text-sm font-medium transition hover:border-black/20"
             >
-              <div className="relative h-[48px] w-[100px]">
-                <Image
-                  src="/kbx-logo.svg"
-                  alt="KBX Spatial Atelier"
-                  fill
-                  sizes="100px"
-                  className="object-contain object-left"
-                />
-              </div>
-
-              <div className="ml-2">
-                <p className="text-sm font-semibold">
-                  KBX Spatial Atelier
-                </p>
-
-                <p className="mt-1 text-[9px] uppercase tracking-[0.18em] text-black/35">
-                  Client Portal
-                </p>
-              </div>
+              Back to Portal
             </Link>
           </div>
         </header>
 
-        <section className="px-5 py-20">
-          <div className="mx-auto max-w-xl rounded-3xl border border-black/10 bg-white p-8 text-center shadow-sm">
+        <section className="flex min-h-[calc(100vh-100px)] items-center justify-center px-5 py-16">
+          <div className="w-full max-w-2xl rounded-[32px] bg-white p-8 text-center shadow-sm ring-1 ring-black/[0.04] sm:p-12">
             <div
-              className="mx-auto flex h-14 w-14 items-center justify-center rounded-full text-xl font-semibold text-white"
+              className="mx-auto flex h-16 w-16 items-center justify-center rounded-full text-2xl text-white"
               style={{
-                backgroundColor:
-                  RED,
+                backgroundColor: RED,
               }}
             >
-              !
+              ✓
             </div>
 
-            <h1 className="mt-6 text-2xl font-semibold">
-              Client profile required
-            </h1>
-
-            <p className="mt-3 text-sm leading-6 text-black/45">
-              Please create a client profile or
-              log into your existing profile before
-              completing the Full Interior Project
-              Brief.
+            <p
+              className="mt-8 text-xs font-bold uppercase tracking-[0.2em]"
+              style={{ color: RED }}
+            >
+              Brief Submitted
             </p>
 
-            <Link
-              href="/client-profile"
-              className="mt-7 inline-flex rounded-xl bg-black px-6 py-3.5 text-sm font-semibold text-white transition hover:bg-[#910B0A]"
-            >
-              Go to Client Portal →
-            </Link>
+            <h1 className="mt-3 text-3xl font-semibold tracking-tight sm:text-4xl">
+              Thank you,{" "}
+              {client?.name || "Client"}.
+            </h1>
+
+            <p className="mx-auto mt-5 max-w-xl text-sm leading-7 text-black/55">
+              Your Full Interior Design Brief
+              has been successfully submitted.
+              Our team will review the
+              information and proceed with the
+              next stage of your project.
+            </p>
+
+            <div className="mt-8 flex flex-col justify-center gap-3 sm:flex-row">
+              <Link
+                href="/client-portal"
+                className="rounded-full px-6 py-3 text-sm font-semibold text-white"
+                style={{
+                  backgroundColor: RED,
+                }}
+              >
+                Return to Client Portal
+              </Link>
+
+              <Link
+                href="/"
+                className="rounded-full border border-black/10 px-6 py-3 text-sm font-semibold text-black"
+              >
+                Back to Website
+              </Link>
+            </div>
           </div>
         </section>
       </main>
     );
   }
 
-  /* =======================================================
-     MAIN
-  ======================================================= */
-
   return (
-    <main className="min-h-screen bg-[#f7f7f5]">
-      {/* =====================================================
-          HEADER
-      ===================================================== */}
+    <main className="min-h-screen bg-[#f7f7f5] text-black">
+      <header className="sticky top-0 z-40 border-b border-black/10 bg-white/95 backdrop-blur">
+        <div className="mx-auto flex h-[100px] max-w-[1400px] items-center justify-between px-5 sm:px-8 lg:px-10">
+          <div className="relative h-[64px] w-[130px] shrink-0 sm:h-[70px] sm:w-[140px]">
+            <Image
+              src="/kbx-logo.svg"
+              alt="KBX Spatial Atelier"
+              fill
+              priority
+              sizes="140px"
+              className="object-contain object-left"
+            />
+          </div>
 
-      <header className="border-b border-black/10 bg-white px-5 py-5 md:px-8">
-        <div className="mx-auto flex max-w-[1400px] items-center justify-between">
-          <Link
-            href="/client-portal"
-            className="flex items-center"
-          >
-            <div className="relative h-[48px] w-[100px] shrink-0 sm:h-[52px] sm:w-[105px]">
-              <Image
-                src="/kbx-logo.svg"
-                alt="KBX Spatial Atelier"
-                fill
-                sizes="105px"
-                className="object-contain object-left"
-              />
-            </div>
-
-            <div className="ml-2 leading-none">
-              <p className="text-sm font-semibold">
-                KBX Spatial Atelier
-              </p>
-
-              <p className="mt-[5px] text-[10px] uppercase tracking-[0.18em] text-black/40">
-                Client Portal
-              </p>
-            </div>
-          </Link>
-
-          <div className="hidden items-center gap-5 sm:flex">
-            <div className="text-right">
-              <p className="text-[10px] uppercase tracking-[0.15em] text-black/30">
-                Client
-              </p>
-
-              <p className="mt-1 text-xs font-medium text-black/60">
-                {client.name}
-              </p>
-            </div>
+          <div className="flex items-center gap-3">
+            <span className="hidden text-xs text-black/40 sm:block">
+              {saveStatus}
+            </span>
 
             <Link
               href="/client-portal"
-              className="text-xs font-medium text-black/45 transition hover:text-black"
+              className="rounded-full border border-black/10 px-4 py-2 text-sm font-medium transition hover:border-black/20"
             >
-              ← Client Portal
+              Back to Portal
             </Link>
           </div>
         </div>
       </header>
 
-      {/* =====================================================
-          PROGRESS
-          
-          IMPORTANT:
-          This is NOT sticky.
-          It will scroll normally with the page.
-      ===================================================== */}
-
-      <div className="border-b border-black/10 bg-white">
-        <div className="mx-auto max-w-[1000px] px-5 py-4 md:px-8">
-          <div className="flex items-center justify-between">
+      <div className="mx-auto max-w-[1100px] px-5 py-8 sm:px-8 lg:py-12">
+        <div className="mb-8">
+          <div className="mb-5 flex flex-col justify-between gap-4 sm:flex-row sm:items-end">
             <div>
               <p
-                className="text-[10px] font-semibold uppercase tracking-[0.2em]"
-                style={{
-                  color: RED,
-                }}
+                className="text-xs font-bold uppercase tracking-[0.2em]"
+                style={{ color: RED }}
               >
-                Full Interior Project
+                Full Interior Design Brief
               </p>
 
-              <p className="mt-1 text-xs text-black/40">
-                Section{" "}
-                {currentSection + 1}{" "}
-                of {sections.length}
+              <h1 className="mt-2 text-3xl font-semibold tracking-tight sm:text-4xl">
+                Let&apos;s define your space.
+              </h1>
+
+              <p className="mt-3 max-w-2xl text-sm leading-6 text-black/50">
+                Complete each step so our design team can understand
+                your project, preferences and requirements.
               </p>
             </div>
 
-            <div className="flex items-center gap-4">
-              {renderAutoSaveStatus()}
+            {client && (
+              <div className="rounded-2xl border border-black/10 bg-white px-4 py-3">
+                <p className="text-[10px] font-bold uppercase tracking-[0.15em] text-black/35">
+                  Client
+                </p>
 
-              <span className="text-xs font-semibold text-black/45">
-                {Math.round(progress)}
-                %
-              </span>
-            </div>
+                <p className="mt-1 text-sm font-semibold">
+                  {client.name}
+                </p>
+              </div>
+            )}
           </div>
 
-          <div className="mt-3 h-1.5 overflow-hidden rounded-full bg-black/5">
+          <div className="h-2 overflow-hidden rounded-full bg-black/[0.06]">
             <div
               className="h-full rounded-full transition-all duration-300"
               style={{
-                width: `${progress}%`,
+                width: `${completionPercentage}%`,
                 backgroundColor: RED,
               }}
             />
           </div>
+
+          <div className="mt-3 flex items-center justify-between text-xs text-black/40">
+            <span>
+              Step {currentSection + 1} of{" "}
+              {sections.length}
+            </span>
+
+            <span>
+              {completionPercentage}% complete
+            </span>
+          </div>
         </div>
-      </div>
 
-      {/* =====================================================
-          MAIN
-      ===================================================== */}
-
-      <section className="px-5 py-10 md:px-8 md:py-16">
-        <div className="mx-auto max-w-[900px]">
-          {currentSection === 0 && (
-            <div className="mb-8 rounded-3xl bg-black p-7 text-white md:p-10">
-              <p
-                className="text-xs font-semibold uppercase tracking-[0.2em]"
-                style={{
-                  color: RED,
-                }}
-              >
-                KBX Client Design Brief
-              </p>
-
-              <h1 className="mt-4 text-3xl font-semibold tracking-[-0.03em] md:text-5xl">
-                Your space.
-                <br />
-                Your vision.
-              </h1>
-
-              <p className="mt-5 max-w-2xl text-sm leading-6 text-white/50">
-                Help us understand your project before
-                we begin the design process. Most
-                questions can be answered simply by
-                selecting the options that apply to you.
-              </p>
-            </div>
-          )}
-
-          <div className="rounded-3xl border border-black/10 bg-white p-6 shadow-sm md:p-10">
-            <div className="flex items-start gap-5">
-              <div
-                className="flex h-12 w-12 shrink-0 items-center justify-center rounded-full text-sm font-semibold text-white"
-                style={{
-                  backgroundColor:
-                    RED,
-                }}
-              >
-                {String(
-                  currentSection + 1
-                ).padStart(2, "0")}
+        <form onSubmit={handleSubmit}>
+          <div className="mb-5 rounded-[30px] bg-black px-6 py-6 text-white sm:px-8">
+            <div className="flex items-start gap-4">
+              <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl bg-white/10 text-sm font-bold">
+                {current.number}
               </div>
 
               <div>
-                <p
-                  className="text-[10px] font-semibold uppercase tracking-[0.2em]"
-                  style={{
-                    color: RED,
-                  }}
-                >
-                  Section{" "}
-                  {String(
-                    currentSection + 1
-                  ).padStart(2, "0")}
+                <p className="text-[10px] font-bold uppercase tracking-[0.18em] text-white/40">
+                  Step {currentSection + 1}
                 </p>
 
-                <h2 className="mt-2 text-2xl font-semibold tracking-tight md:text-3xl">
-                  {
-                    sections[
-                      currentSection
-                    ]
-                  }
+                <h2 className="mt-1 text-2xl font-semibold">
+                  {current.title}
                 </h2>
+
+                <p className="mt-2 text-sm leading-6 text-white/55">
+                  {current.description}
+                </p>
               </div>
             </div>
+          </div>
 
-            <div className="mt-10">
-              {renderSection()}
-            </div>
+          <div className="rounded-[30px] bg-white p-6 shadow-sm ring-1 ring-black/[0.04] sm:p-8 lg:p-10">
+            {currentSection === 0 && (
+              <div className="space-y-10">
+                <div className="grid gap-5 md:grid-cols-2">
+                  <TextInput
+                    label="Project Name"
+                    value={form.projectName}
+                    onChange={(value) =>
+                      updateField(
+                        "projectName",
+                        value
+                      )
+                    }
+                    placeholder="e.g. Otoo Residence"
+                  />
 
-            {/* ERROR */}
+                  <TextInput
+                    label="Project Location"
+                    value={form.projectLocation}
+                    onChange={(value) =>
+                      updateField(
+                        "projectLocation",
+                        value
+                      )
+                    }
+                    placeholder="e.g. East Legon, Accra"
+                  />
+                </div>
 
-            {error && (
-              <div className="mt-8 rounded-xl border border-[#910B0A]/20 bg-[#910B0A]/5 px-4 py-4">
-                <p
-                  className="text-xs font-medium leading-5"
-                  style={{
-                    color: RED,
-                  }}
-                >
+                <SingleSelectGroup
+                  title="Project Type"
+                  description="Select one property type."
+                  field="projectType"
+                  options={projectTypes}
+                  value={form.projectType}
+                  onSelect={selectSingle}
+                />
+
+                <SingleSelectGroup
+                  title="Project Status"
+                  description="Select the option that best describes the current state of the property."
+                  field="projectStatus"
+                  options={projectStatuses}
+                  value={form.projectStatus}
+                  onSelect={selectSingle}
+                />
+              </div>
+            )}
+
+            {currentSection === 1 && (
+              <div className="space-y-10">
+                <MultiSelectGroup
+                  title="Which spaces are included?"
+                  field="spaces"
+                  options={spaces}
+                  form={form}
+                  onToggle={toggleMultiSelect}
+                />
+
+                <MultiSelectGroup
+                  title="Who will use the space?"
+                  field="lifestyle"
+                  options={lifestyle}
+                  form={form}
+                  onToggle={toggleMultiSelect}
+                />
+              </div>
+            )}
+
+            {currentSection === 2 && (
+              <div className="space-y-10">
+                <MultiSelectGroup
+                  title="Preferred Design Styles"
+                  field="designStyles"
+                  options={designStyles}
+                  form={form}
+                  onToggle={toggleMultiSelect}
+                />
+
+                <MultiSelectGroup
+                  title="Desired Atmosphere"
+                  field="atmosphere"
+                  options={atmosphere}
+                  form={form}
+                  onToggle={toggleMultiSelect}
+                />
+
+                <MultiSelectGroup
+                  title="Preferred Colour Direction"
+                  field="colors"
+                  options={colors}
+                  form={form}
+                  onToggle={toggleMultiSelect}
+                />
+              </div>
+            )}
+
+            {currentSection === 3 && (
+              <div className="space-y-10">
+                <MultiSelectGroup
+                  title="Preferred Materials & Finishes"
+                  field="materials"
+                  options={materials}
+                  form={form}
+                  onToggle={toggleMultiSelect}
+                />
+
+                <TextArea
+                  label="Material / Finish Notes"
+                  value={form.materialNotes}
+                  onChange={(value) =>
+                    updateField(
+                      "materialNotes",
+                      value
+                    )
+                  }
+                  placeholder="Tell us about specific materials, finishes, brands or combinations you would like..."
+                />
+              </div>
+            )}
+
+            {currentSection === 4 && (
+              <div className="space-y-10">
+                <MultiSelectGroup
+                  title="Furniture Requirements"
+                  field="furniture"
+                  options={furniture}
+                  form={form}
+                  onToggle={toggleMultiSelect}
+                />
+
+                <MultiSelectGroup
+                  title="Storage & Joinery Requirements"
+                  field="storage"
+                  options={storage}
+                  form={form}
+                  onToggle={toggleMultiSelect}
+                />
+              </div>
+            )}
+
+            {currentSection === 5 && (
+              <div className="space-y-10">
+                <MultiSelectGroup
+                  title="Kitchen Requirements"
+                  field="kitchen"
+                  options={kitchen}
+                  form={form}
+                  onToggle={toggleMultiSelect}
+                />
+              </div>
+            )}
+
+            {currentSection === 6 && (
+              <div className="space-y-10">
+                <MultiSelectGroup
+                  title="Bathroom Requirements"
+                  field="bathrooms"
+                  options={bathrooms}
+                  form={form}
+                  onToggle={toggleMultiSelect}
+                />
+              </div>
+            )}
+
+            {currentSection === 7 && (
+              <div className="space-y-10">
+                <MultiSelectGroup
+                  title="Lighting Requirements"
+                  field="lighting"
+                  options={lighting}
+                  form={form}
+                  onToggle={toggleMultiSelect}
+                />
+
+                <MultiSelectGroup
+                  title="Technology & Smart Home"
+                  field="technology"
+                  options={technology}
+                  form={form}
+                  onToggle={toggleMultiSelect}
+                />
+              </div>
+            )}
+
+            {currentSection === 8 && (
+              <div className="space-y-10">
+                <MultiSelectGroup
+                  title="What matters most?"
+                  description="Select all priorities that are important to you."
+                  field="priorities"
+                  options={priorities}
+                  form={form}
+                  onToggle={toggleMultiSelect}
+                />
+
+                <MultiSelectGroup
+                  title="What would you prefer to avoid?"
+                  description="Select any design directions or features you do not want."
+                  field="avoid"
+                  options={avoid}
+                  form={form}
+                  onToggle={toggleMultiSelect}
+                />
+
+                <TextArea
+                  label="Anything else you want us to avoid?"
+                  value={form.avoidNotes}
+                  onChange={(value) =>
+                    updateField(
+                      "avoidNotes",
+                      value
+                    )
+                  }
+                  placeholder="Tell us about anything you definitely do not want in the design..."
+                  rows={4}
+                />
+              </div>
+            )}
+
+            {currentSection === 9 && (
+              <div className="space-y-10">
+                <SingleSelectGroup
+                  title="Project Timeline"
+                  description="Select the timeline that best matches your expectations."
+                  field="timeline"
+                  options={timelines}
+                  value={form.timeline}
+                  onSelect={selectSingle}
+                />
+
+                <TextArea
+                  label="Must-Haves"
+                  value={form.mustHaves}
+                  onChange={(value) =>
+                    updateField(
+                      "mustHaves",
+                      value
+                    )
+                  }
+                  placeholder="What are the features, functions or design elements that absolutely must be included?"
+                  rows={6}
+                />
+
+                <TextArea
+                  label="Additional Requirements"
+                  value={
+                    form.additionalNotes
+                  }
+                  onChange={(value) =>
+                    updateField(
+                      "additionalNotes",
+                      value
+                    )
+                  }
+                  placeholder="Anything else our design team should know about your project?"
+                  rows={6}
+                />
+              </div>
+            )}
+
+            {currentSection === 10 && (
+              <div className="space-y-10">
+                <div>
+                  <h3 className="text-base font-semibold">
+                    Reference Images
+                  </h3>
+
+                  <p className="mt-1 max-w-2xl text-sm leading-6 text-black/50">
+                    Upload images that communicate your preferred
+                    style, materials, layouts, colours, furniture or
+                    specific design ideas.
+                  </p>
+                </div>
+
+                <div className="rounded-3xl border border-dashed border-black/15 bg-[#f7f7f5] p-6">
+                  <label className="flex cursor-pointer flex-col items-center justify-center rounded-2xl border border-black/10 bg-white px-5 py-10 text-center transition hover:border-black/20">
+                    <span
+                      className="flex h-12 w-12 items-center justify-center rounded-2xl text-xl text-white"
+                      style={{
+                        backgroundColor: RED,
+                      }}
+                    >
+                      +
+                    </span>
+
+                    <span className="mt-4 text-sm font-semibold">
+                      Add reference images
+                    </span>
+
+                    <span className="mt-1 text-xs text-black/40">
+                      JPG or PNG · Maximum 5MB each · Up to{" "}
+                      {MAX_REFERENCE_IMAGES} images
+                    </span>
+
+                    <input
+                      type="file"
+                      accept="image/jpeg,image/png"
+                      multiple
+                      onChange={
+                        handleReferenceImages
+                      }
+                      className="hidden"
+                    />
+                  </label>
+
+                  {referenceImages.length >
+                    0 && (
+                    <div className="mt-5 grid gap-3 sm:grid-cols-2">
+                      {referenceImages.map(
+                        (file, index) => (
+                          <div
+                            key={`${file.name}-${file.lastModified}-${index}`}
+                            className="flex items-center justify-between gap-3 rounded-2xl border border-black/10 bg-white px-4 py-3"
+                          >
+                            <div className="min-w-0">
+                              <p className="truncate text-sm font-medium">
+                                {file.name}
+                              </p>
+
+                              <p className="mt-1 text-xs text-black/40">
+                                {(
+                                  file.size /
+                                  (1024 *
+                                    1024)
+                                ).toFixed(
+                                  2
+                                )}{" "}
+                                MB
+                              </p>
+                            </div>
+
+                            <button
+                              type="button"
+                              onClick={() =>
+                                removeReferenceImage(
+                                  index
+                                )
+                              }
+                              className="shrink-0 rounded-full border border-black/10 px-3 py-1.5 text-xs font-medium transition hover:border-black/25"
+                            >
+                              Remove
+                            </button>
+                          </div>
+                        )
+                      )}
+                    </div>
+                  )}
+                </div>
+
+                <div className="rounded-3xl border border-black/10 bg-[#f7f7f5] p-5">
+                  <label className="flex cursor-pointer gap-4">
+                    <input
+                      type="checkbox"
+                      checked={
+                        form.confirmation
+                      }
+                      onChange={(event) =>
+                        updateField(
+                          "confirmation",
+                          event.target.checked
+                        )
+                      }
+                      className="mt-1 h-5 w-5 shrink-0 accent-[#910B0A]"
+                    />
+
+                    <span>
+                      <span className="block text-sm font-semibold">
+                        I confirm that the information provided is
+                        accurate.
+                      </span>
+
+                      <span className="mt-1 block text-xs leading-5 text-black/45">
+                        I understand that this brief
+                        will be used by KBX Spatial
+                        Atelier as a basis for
+                        developing my interior design
+                        proposal.
+                      </span>
+                    </span>
+                  </label>
+                </div>
+
+                {error && (
+                  <div className="rounded-2xl border border-red-200 bg-red-50 px-4 py-3 text-sm leading-6 text-red-700">
+                    {error}
+                  </div>
+                )}
+              </div>
+            )}
+
+            {error &&
+              currentSection !== 10 && (
+                <div className="mt-8 rounded-2xl border border-red-200 bg-red-50 px-4 py-3 text-sm leading-6 text-red-700">
                   {error}
-                </p>
-              </div>
-            )}
-
-            {/* SUCCESS */}
-
-            {submitted && !error && (
-              <div className="mt-8 rounded-xl border border-green-600/20 bg-green-600/5 px-4 py-4">
-                <p className="text-xs font-medium leading-5 text-green-700">
-                  Your brief has been submitted successfully. The PDF has been generated, saved to your Client Portal, and sent to KBX Spatial Atelier.
-                </p>
-
-                <Link
-                  href="/client-portal"
-                  className="mt-4 inline-flex rounded-lg bg-green-700 px-4 py-2.5 text-xs font-semibold text-white transition hover:opacity-90"
-                >
-                  View My Documents →
-                </Link>
-              </div>
-            )}
+                </div>
+              )}
 
             {/* NAVIGATION */}
-
-            <div className="mt-10 flex flex-col-reverse gap-3 border-t border-black/10 pt-6 sm:flex-row sm:justify-between">
-              <button
-                type="button"
-                onClick={
-                  previousSection
-                }
-                disabled={
-                  currentSection === 0 ||
-                  submitting
-                }
-                className="rounded-xl border border-black/10 px-5 py-3.5 text-sm font-medium text-black transition hover:border-black/30 disabled:cursor-not-allowed disabled:opacity-30"
-              >
-                ← Previous
-              </button>
-
-              <div className="flex flex-col gap-3 sm:flex-row">
+            <div className="mt-10 border-t border-black/10 pt-6">
+              <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
                 <button
                   type="button"
-                  onClick={
-                    saveProgress
-                  }
-                  disabled={
-                    submitting
-                  }
-                  className="rounded-xl border border-black/10 bg-white px-5 py-3.5 text-sm font-medium text-black transition hover:border-black/30 disabled:cursor-not-allowed disabled:opacity-50"
+                  onClick={goPrevious}
+                  disabled={currentSection === 0}
+                  className={`rounded-full px-6 py-3 text-sm font-semibold transition ${
+                    currentSection === 0
+                      ? "cursor-not-allowed text-black/20"
+                      : "border border-black/10 text-black hover:border-black/25"
+                  }`}
                 >
-                  Save Progress
+                  ← Previous
                 </button>
 
                 {currentSection <
                 sections.length - 1 ? (
                   <button
                     type="button"
-                    onClick={
-                      nextSection
-                    }
-                    disabled={
-                      submitting
-                    }
-                    className="rounded-xl px-6 py-3.5 text-sm font-semibold text-white transition hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-50"
+                    onClick={goNext}
+                    className="rounded-full px-8 py-3 text-sm font-semibold text-white transition hover:opacity-90"
                     style={{
-                      backgroundColor:
-                        RED,
+                      backgroundColor: RED,
                     }}
                   >
                     Continue →
                   </button>
                 ) : (
                   <button
-                    type="button"
-                    onClick={
-                      completeBrief
-                    }
+                    type="submit"
                     disabled={
-                      submitting ||
-                      submitted
+                      isSubmitting
                     }
-                    className="rounded-xl bg-black px-6 py-3.5 text-sm font-semibold text-white transition hover:bg-[#910B0A] disabled:cursor-not-allowed disabled:opacity-50"
+                    className="rounded-full px-8 py-3 text-sm font-semibold text-white transition hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-50"
+                    style={{
+                      backgroundColor: RED,
+                    }}
                   >
-                    {submitting
+                    {isSubmitting
                       ? "Submitting..."
-                      : submitted
-                      ? "Brief Submitted ✓"
-                      : "Complete Brief ✓"}
+                      : "Submit Full Interior Brief"}
                   </button>
                 )}
               </div>
-            </div>
-          </div>
 
-          {/* =================================================
-              SECTION NAVIGATION
-          ================================================= */}
+              {/* ORIGINAL 1–11 DIRECT STEP NAVIGATION */}
+              <div className="mt-6 flex flex-wrap items-center justify-center gap-2">
+                {sections.map(
+                  (section, index) => {
+                    const active =
+                      currentSection ===
+                      index;
 
-          <div className="mt-8 rounded-2xl border border-black/10 bg-white p-5">
-            <p className="text-[10px] font-semibold uppercase tracking-[0.15em] text-black/35">
-              Sections
-            </p>
+                    const completed =
+                      index <
+                      currentSection;
 
-            <div className="mt-4 flex flex-wrap gap-2">
-              {sections.map(
-                (
-                  sectionName,
-                  index
-                ) => (
-                  <button
-                    key={
-                      sectionName
-                    }
-                    type="button"
-                    disabled={
-                      submitting
-                    }
-                    onClick={() => {
-                      setCurrentSection(
-                        index
-                      );
-
-                      setError("");
-
-                      performAutoSave(
-                        form,
-                        index
-                      );
-
-                      window.scrollTo(
-                        {
-                          top: 0,
-                          behavior:
-                            "smooth",
+                    return (
+                      <button
+                        key={
+                          section.number
                         }
-                      );
-                    }}
-                    className={`rounded-lg px-3 py-2 text-[10px] font-medium transition disabled:cursor-not-allowed ${
-                      currentSection ===
-                      index
-                        ? "text-white"
-                        : "bg-[#f7f7f5] text-black"
-                    }`}
-                    style={
-                      currentSection ===
-                      index
-                        ? {
-                            backgroundColor:
-                              RED,
-                          }
-                        : {
-                            color:
-                              "#111111",
-                          }
-                    }
-                  >
-                    {String(
-                      index + 1
-                    ).padStart(
-                      2,
-                      "0"
-                    )}
-                  </button>
-                )
-              )}
-            </div>
-          </div>
-        </div>
-      </section>
-
-      {/* =====================================================
-          FOOTER
-      ===================================================== */}
-
-      <footer className="border-t border-black/10 bg-white px-5 py-8 md:px-8">
-        <div className="mx-auto max-w-[1400px]">
-          <div className="flex flex-col gap-8 md:flex-row md:items-end md:justify-between">
-            <div>
-              <div className="flex items-center">
-                <div className="relative h-[48px] w-[100px] shrink-0 sm:h-[52px] sm:w-[105px]">
-                  <Image
-                    src="/kbx-logo.svg"
-                    alt="KBX Spatial Atelier"
-                    fill
-                    sizes="105px"
-                    className="object-contain object-left"
-                  />
-                </div>
-
-                <div className="ml-2 leading-none">
-                  <p className="text-sm font-semibold">
-                    KBX Spatial Atelier
-                  </p>
-
-                  <p className="mt-[5px] text-[10px] uppercase tracking-[0.18em] text-black/40">
-                    Interior Design • Architecture • Bespoke Space
-                  </p>
-                </div>
+                        type="button"
+                        onClick={() =>
+                          goToSection(
+                            index
+                          )
+                        }
+                        aria-label={`Go to step ${
+                          index + 1
+                        }: ${
+                          section.title
+                        }`}
+                        aria-current={
+                          active
+                            ? "step"
+                            : undefined
+                        }
+                        className={`flex h-9 w-9 items-center justify-center rounded-full text-xs font-semibold transition-all ${
+                          active
+                            ? "bg-[#910B0A] text-white shadow-sm"
+                            : completed
+                            ? "border border-[#910B0A]/30 bg-[#910B0A]/5 text-[#910B0A] hover:bg-[#910B0A]/10"
+                            : "border border-black/10 bg-white text-black/45 hover:border-[#910B0A]/40 hover:text-[#910B0A]"
+                        }`}
+                      >
+                        {index + 1}
+                      </button>
+                    );
+                  }
+                )}
               </div>
 
-              <p className="mt-5 max-w-sm text-xs leading-5 text-black/40">
-                Creating thoughtful, sophisticated
-                environments through design,
-                architecture and bespoke spatial
-                solutions.
-              </p>
-            </div>
-
-            <div className="text-xs text-black/40 md:text-right">
-              <p className="font-medium text-black/55">
-                Full Interior Project
-              </p>
-
-              <p className="mt-1">
-                Client Design Brief
+              <p className="mt-3 text-center text-[11px] text-black/35">
+                Click any number to move directly to
+                that section.
               </p>
             </div>
           </div>
+        </form>
+      </div>
 
-          <div className="mt-8 border-t border-black/10 pt-5">
-            <div className="flex flex-col gap-2 text-[10px] uppercase tracking-[0.15em] text-black/30 sm:flex-row sm:justify-between">
-              <span>
-                © 2026 KBX Spatial Atelier
-              </span>
+      <footer className="mt-8 border-t border-black/10 bg-white">
+        <div className="mx-auto flex max-w-[1400px] flex-col gap-6 px-5 py-8 sm:flex-row sm:items-center sm:justify-between sm:px-8 lg:px-10">
+          <div className="relative h-[48px] w-[100px] shrink-0 sm:h-[52px] sm:w-[105px]">
+            <Image
+              src="/kbx-logo.svg"
+              alt="KBX Spatial Atelier"
+              fill
+              sizes="105px"
+              className="object-contain object-left"
+            />
+          </div>
 
-              <span>
-                Interior Design • Interior Architecture • Bespoke Space
-              </span>
-            </div>
+          <div className="text-left text-xs leading-5 text-black/40 sm:text-right">
+            <p>
+              © {new Date().getFullYear()} KBX Spatial Atelier.
+            </p>
+
+            <p>
+              Interior Design · Spatial Design · Bespoke Joinery
+            </p>
           </div>
         </div>
       </footer>

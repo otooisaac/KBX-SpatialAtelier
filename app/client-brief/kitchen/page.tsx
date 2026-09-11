@@ -303,6 +303,7 @@ function getStoredClient(): ClientAccount | null {
     const accountsRaw = localStorage.getItem(
       CLIENT_ACCOUNTS_KEY
     );
+
     const currentId = localStorage.getItem(
       CURRENT_CLIENT_KEY
     );
@@ -361,7 +362,11 @@ function getSavedBrief(): SavedBrief | null {
   }
 }
 
-function CheckboxGroup({
+/* -------------------------------------------------------------------------- */
+/* SELECTION COMPONENTS                                                       */
+/* -------------------------------------------------------------------------- */
+
+function SelectionGroup({
   options,
   values,
   onChange,
@@ -373,7 +378,9 @@ function CheckboxGroup({
   function toggle(value: string) {
     if (values.includes(value)) {
       onChange(
-        values.filter((item) => item !== value)
+        values.filter(
+          (item) => item !== value
+        )
       );
     } else {
       onChange([...values, value]);
@@ -382,26 +389,39 @@ function CheckboxGroup({
 
   return (
     <div className="grid gap-2 sm:grid-cols-2">
-      {options.map((option) => (
-        <label
-          key={option}
-          className="flex cursor-pointer items-center gap-3 rounded-xl border border-black/10 bg-white px-4 py-3 text-sm transition hover:border-black/25"
-        >
-          <input
-            type="checkbox"
-            checked={values.includes(option)}
-            onChange={() => toggle(option)}
-            className="h-4 w-4 accent-[#910B0A]"
-          />
+      {options.map((option) => {
+        const selected =
+          values.includes(option);
 
-          <span>{option}</span>
-        </label>
-      ))}
+        return (
+          <button
+            key={option}
+            type="button"
+            onClick={() => toggle(option)}
+            aria-pressed={selected}
+            className={`rounded-xl border px-4 py-3 text-left text-sm transition ${
+              selected
+                ? "border-[#910B0A] bg-[#910B0A] text-white"
+                : "border-black/10 bg-white text-black/70 hover:border-black/25"
+            }`}
+          >
+            <span className="flex items-center justify-between gap-3">
+              <span>{option}</span>
+
+              {selected && (
+                <span className="text-xs font-bold">
+                  ✓
+                </span>
+              )}
+            </span>
+          </button>
+        );
+      })}
     </div>
   );
 }
 
-function RadioGroup({
+function SingleSelectGroup({
   options,
   value,
   onChange,
@@ -412,25 +432,41 @@ function RadioGroup({
 }) {
   return (
     <div className="grid gap-2 sm:grid-cols-2">
-      {options.map((option) => (
-        <label
-          key={option}
-          className="flex cursor-pointer items-center gap-3 rounded-xl border border-black/10 bg-white px-4 py-3 text-sm transition hover:border-black/25"
-        >
-          <input
-            type="radio"
-            name={`radio-${options.join("-")}`}
-            checked={value === option}
-            onChange={() => onChange(option)}
-            className="h-4 w-4 accent-[#910B0A]"
-          />
+      {options.map((option) => {
+        const selected =
+          value === option;
 
-          <span>{option}</span>
-        </label>
-      ))}
+        return (
+          <button
+            key={option}
+            type="button"
+            onClick={() => onChange(option)}
+            aria-pressed={selected}
+            className={`rounded-xl border px-4 py-3 text-left text-sm transition ${
+              selected
+                ? "border-[#910B0A] bg-[#910B0A] text-white"
+                : "border-black/10 bg-white text-black/70 hover:border-black/25"
+            }`}
+          >
+            <span className="flex items-center justify-between gap-3">
+              <span>{option}</span>
+
+              {selected && (
+                <span className="text-xs font-bold">
+                  ✓
+                </span>
+              )}
+            </span>
+          </button>
+        );
+      })}
     </div>
   );
 }
+
+/* -------------------------------------------------------------------------- */
+/* INPUT COMPONENTS                                                           */
+/* -------------------------------------------------------------------------- */
 
 function TextInput({
   label,
@@ -449,12 +485,16 @@ function TextInput({
 }) {
   return (
     <div>
-      <label className="mb-2 block text-xs font-semibold uppercase tracking-[0.12em] text-black/60">
-        {label}{" "}
-        {required && (
-          <span style={{ color: RED }}>*</span>
-        )}
-      </label>
+      {label && (
+        <label className="mb-2 block text-xs font-semibold uppercase tracking-[0.12em] text-black/60">
+          {label}{" "}
+          {required && (
+            <span style={{ color: RED }}>
+              *
+            </span>
+          )}
+        </label>
+      )}
 
       <input
         type={type}
@@ -485,12 +525,16 @@ function TextArea({
 }) {
   return (
     <div>
-      <label className="mb-2 block text-xs font-semibold uppercase tracking-[0.12em] text-black/60">
-        {label}{" "}
-        {required && (
-          <span style={{ color: RED }}>*</span>
-        )}
-      </label>
+      {label && (
+        <label className="mb-2 block text-xs font-semibold uppercase tracking-[0.12em] text-black/60">
+          {label}{" "}
+          {required && (
+            <span style={{ color: RED }}>
+              *
+            </span>
+          )}
+        </label>
+      )}
 
       <textarea
         value={value}
@@ -571,7 +615,9 @@ function Question({
         {number && (
           <span
             className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-[10px] font-bold text-white"
-            style={{ backgroundColor: RED }}
+            style={{
+              backgroundColor: RED,
+            }}
           >
             {number}
           </span>
@@ -581,7 +627,9 @@ function Question({
           <h3 className="text-sm font-semibold md:text-base">
             {title}{" "}
             {required && (
-              <span style={{ color: RED }}>*</span>
+              <span style={{ color: RED }}>
+                *
+              </span>
             )}
           </h3>
 
@@ -599,6 +647,10 @@ function Question({
     </div>
   );
 }
+
+/* -------------------------------------------------------------------------- */
+/* MAIN PAGE                                                                  */
+/* -------------------------------------------------------------------------- */
 
 export default function KitchenBriefPage() {
   const [client, setClient] =
@@ -629,7 +681,8 @@ export default function KitchenBriefPage() {
     useState("");
 
   useEffect(() => {
-    const loadedClient = getStoredClient();
+    const loadedClient =
+      getStoredClient();
 
     if (loadedClient) {
       setClient(loadedClient);
@@ -642,12 +695,112 @@ export default function KitchenBriefPage() {
       }));
     }
 
-    const savedBrief = getSavedBrief();
+    const savedBrief =
+      getSavedBrief();
 
     if (savedBrief?.form) {
       setForm((current) => ({
         ...current,
         ...savedBrief.form,
+
+        designStyles:
+          Array.isArray(
+            savedBrief.form
+              .designStyles
+          )
+            ? savedBrief.form
+                .designStyles
+            : [],
+
+        cabinetStyle:
+          Array.isArray(
+            savedBrief.form
+              .cabinetStyle
+          )
+            ? savedBrief.form
+                .cabinetStyle
+            : [],
+
+        loftAccess:
+          Array.isArray(
+            savedBrief.form
+              .loftAccess
+          )
+            ? savedBrief.form
+                .loftAccess
+            : [],
+
+        glassDoorLocations:
+          Array.isArray(
+            savedBrief.form
+              .glassDoorLocations
+          )
+            ? savedBrief.form
+                .glassDoorLocations
+            : [],
+
+        ledLocations:
+          Array.isArray(
+            savedBrief.form
+              .ledLocations
+          )
+            ? savedBrief.form
+                .ledLocations
+            : [],
+
+        tallUnitTypes:
+          Array.isArray(
+            savedBrief.form
+              .tallUnitTypes
+          )
+            ? savedBrief.form
+                .tallUnitTypes
+            : [],
+
+        islandPurpose:
+          Array.isArray(
+            savedBrief.form
+              .islandPurpose
+          )
+            ? savedBrief.form
+                .islandPurpose
+            : [],
+
+        islandServices:
+          Array.isArray(
+            savedBrief.form
+              .islandServices
+          )
+            ? savedBrief.form
+                .islandServices
+            : [],
+
+        sinkType:
+          Array.isArray(
+            savedBrief.form
+              .sinkType
+          )
+            ? savedBrief.form
+                .sinkType
+            : [],
+
+        functionalRequirements:
+          Array.isArray(
+            savedBrief.form
+              .functionalRequirements
+          )
+            ? savedBrief.form
+                .functionalRequirements
+            : [],
+
+        doNotWant:
+          Array.isArray(
+            savedBrief.form
+              .doNotWant
+          )
+            ? savedBrief.form
+                .doNotWant
+            : [],
       }));
     }
 
@@ -661,39 +814,55 @@ export default function KitchenBriefPage() {
 
     setIsSaving(true);
 
-    const timer = window.setTimeout(() => {
-      try {
-        const savedBrief: SavedBrief = {
-          client: client || undefined,
-          form,
-          completed: false,
-          submitted: false,
-          savedAt: new Date().toISOString(),
-        };
+    const timer =
+      window.setTimeout(() => {
+        try {
+          const savedBrief: SavedBrief =
+            {
+              client:
+                client || undefined,
+              form,
+              completed: false,
+              submitted: false,
+              savedAt:
+                new Date().toISOString(),
+            };
 
-        localStorage.setItem(
-          KITCHEN_BRIEF_KEY,
-          JSON.stringify(savedBrief)
-        );
+          localStorage.setItem(
+            KITCHEN_BRIEF_KEY,
+            JSON.stringify(
+              savedBrief
+            )
+          );
 
-        setSaveMessage("Saved automatically");
+          setSaveMessage(
+            "Saved automatically"
+          );
 
-        window.setTimeout(() => {
-          setSaveMessage("");
-        }, 1800);
-      } catch {
-        setSaveMessage("Unable to save");
-      }
+          window.setTimeout(() => {
+            setSaveMessage("");
+          }, 1800);
+        } catch {
+          setSaveMessage(
+            "Unable to save"
+          );
+        }
 
-      setIsSaving(false);
-    }, 500);
+        setIsSaving(false);
+      }, 500);
 
     return () => {
       window.clearTimeout(timer);
     };
-  }, [form, client, isLoaded]);
+  }, [
+    form,
+    client,
+    isLoaded,
+  ]);
 
-  function updateField<K extends keyof KitchenForm>(
+  function updateField<
+    K extends keyof KitchenForm
+  >(
     field: K,
     value: KitchenForm[K]
   ) {
@@ -713,20 +882,54 @@ export default function KitchenBriefPage() {
     setReferenceImages(files);
   }
 
+  function scrollToSection(
+    sectionNumber: number
+  ) {
+    const element =
+      document.getElementById(
+        `kitchen-section-${sectionNumber}`
+      );
+
+    if (!element) {
+      return;
+    }
+
+    const headerOffset = 120;
+
+    const top =
+      element.getBoundingClientRect()
+        .top +
+      window.scrollY -
+      headerOffset;
+
+    window.scrollTo({
+      top,
+      behavior: "smooth",
+    });
+  }
+
   const selectedReferenceCount =
     referenceImages.length;
 
   const requiredInformationComplete =
     useMemo(() => {
       return (
-        form.projectName.trim() !== "" &&
-        form.clientName.trim() !== "" &&
-        form.projectLocation.trim() !== "" &&
-        form.designGoal.trim() !== "" &&
-        form.mainRequirements.trim() !== "" &&
-        form.builtInCabinetry !== "" &&
-        form.ownsAppliances !== "" &&
-        form.sinkProvidedBy !== "" &&
+        form.projectName.trim() !==
+          "" &&
+        form.clientName.trim() !==
+          "" &&
+        form.projectLocation.trim() !==
+          "" &&
+        form.designGoal.trim() !==
+          "" &&
+        form.mainRequirements.trim() !==
+          "" &&
+        form.builtInCabinetry !==
+          "" &&
+        form.ownsAppliances !==
+          "" &&
+        form.sinkProvidedBy !==
+          "" &&
         form.informationChecked &&
         form.clientRequirementsConfirmed
       );
@@ -763,15 +966,19 @@ export default function KitchenBriefPage() {
         submitted: true,
         completedAt:
           new Date().toISOString(),
+
         referenceImages:
-          referenceImages.map((file) => ({
-            name: file.name,
-            type: file.type,
-            size: file.size,
-          })),
+          referenceImages.map(
+            (file) => ({
+              name: file.name,
+              type: file.type,
+              size: file.size,
+            })
+          ),
       };
 
-      const formData = new FormData();
+      const formData =
+        new FormData();
 
       formData.append(
         "briefType",
@@ -780,37 +987,31 @@ export default function KitchenBriefPage() {
 
       formData.append(
         "briefData",
-        JSON.stringify(briefData)
+        JSON.stringify(
+          briefData
+        )
       );
 
-      referenceImages.forEach((file) => {
-        formData.append(
-          "referenceImages",
-          file
-        );
-      });
-
-      /*
-       * Unified brief endpoint.
-       *
-       * The API will:
-       * 1. Identify this as a Kitchen brief.
-       * 2. Generate the Kitchen & Storerooms PDF.
-       * 3. Upload the PDF to Supabase Storage.
-       * 4. Create a client_documents record.
-       * 5. Send the PDF/details through Resend.
-       * 6. Return success to this page.
-       */
-
-      const response = await fetch(
-        "/api/send-brief",
-        {
-          method: "POST",
-          body: formData,
+      referenceImages.forEach(
+        (file) => {
+          formData.append(
+            "referenceImages",
+            file
+          );
         }
       );
 
-      const result = await response.json();
+      const response =
+        await fetch(
+          "/api/send-brief",
+          {
+            method: "POST",
+            body: formData,
+          }
+        );
+
+      const result =
+        await response.json();
 
       if (
         !response.ok ||
@@ -822,8 +1023,10 @@ export default function KitchenBriefPage() {
         );
       }
 
-      const completedBrief: SavedBrief = {
-        client: client || undefined,
+      const completedBrief:
+        SavedBrief = {
+        client:
+          client || undefined,
         form,
         completed: true,
         submitted: true,
@@ -835,7 +1038,9 @@ export default function KitchenBriefPage() {
 
       localStorage.setItem(
         KITCHEN_BRIEF_KEY,
-        JSON.stringify(completedBrief)
+        JSON.stringify(
+          completedBrief
+        )
       );
 
       setSubmitMessage(
@@ -936,7 +1141,7 @@ export default function KitchenBriefPage() {
 
       {/* INTRO */}
 
-      <section className="px-5 pb-10 pt-12 md:px-8 md:pb-14 md:pt-20">
+      <section className="px-5 pb-8 pt-12 md:px-8 md:pb-10 md:pt-20">
         <div className="mx-auto max-w-[1000px]">
 
           <p
@@ -985,6 +1190,59 @@ export default function KitchenBriefPage() {
             </div>
           )}
 
+          {/* SECTION NAVIGATION */}
+
+          <div className="mt-8 rounded-2xl border border-black/10 bg-white p-4">
+            <div className="mb-3 flex items-center justify-between gap-4">
+              <div>
+                <p className="text-xs font-semibold uppercase tracking-[0.16em] text-black/40">
+                  Brief Sections
+                </p>
+
+                <p className="mt-1 text-xs text-black/35">
+                  Select a number to jump to that section.
+                </p>
+              </div>
+            </div>
+
+            <div className="grid grid-cols-6 gap-2 sm:grid-cols-11">
+              {[
+                "Project",
+                "Requirements",
+                "Kitchen",
+                "Storage",
+                "Island",
+                "Appliances",
+                "Sink",
+                "Functional",
+                "Do Not Want",
+                "Additional",
+                "Confirmation",
+              ].map(
+                (title, index) => (
+                  <button
+                    key={title}
+                    type="button"
+                    onClick={() =>
+                      scrollToSection(
+                        index + 1
+                      )
+                    }
+                    className="group flex min-w-0 flex-col items-center gap-1.5"
+                  >
+                    <span className="flex h-10 w-10 items-center justify-center rounded-full border border-black/10 bg-[#fafaf8] text-sm font-semibold transition group-hover:border-[#910B0A] group-hover:bg-[#910B0A] group-hover:text-white">
+                      {index + 1}
+                    </span>
+
+                    <span className="hidden max-w-[72px] truncate text-center text-[8px] uppercase tracking-[0.08em] text-black/35 sm:block">
+                      {title}
+                    </span>
+                  </button>
+                )
+              )}
+            </div>
+          </div>
+
         </div>
       </section>
 
@@ -996,12 +1254,15 @@ export default function KitchenBriefPage() {
       >
         <div className="mx-auto max-w-[1000px] space-y-8">
 
-          {/* SECTION A */}
+          {/* SECTION 1 */}
 
-          <section className="rounded-3xl border border-black/10 bg-white p-6 md:p-9">
+          <section
+            id="kitchen-section-1"
+            className="scroll-mt-32 rounded-3xl border border-black/10 bg-white p-6 md:p-9"
+          >
 
             <SectionHeader
-              number="A"
+              number="1"
               title="Project Information"
               description="Basic project information allows KBX to correctly identify the project and the area being designed."
               required
@@ -1051,13 +1312,15 @@ export default function KitchenBriefPage() {
                 <label className="mb-2 block text-xs font-semibold uppercase tracking-[0.12em] text-black/60">
                   Room / Area{" "}
                   <span
-                    style={{ color: RED }}
+                    style={{
+                      color: RED,
+                    }}
                   >
                     *
                   </span>
                 </label>
 
-                <RadioGroup
+                <SingleSelectGroup
                   options={[
                     "Kitchen",
                     "Wardrobe",
@@ -1123,12 +1386,15 @@ export default function KitchenBriefPage() {
 
           </section>
 
-          {/* SECTION B */}
+          {/* SECTION 2 */}
 
-          <section className="rounded-3xl border border-black/10 bg-white p-6 md:p-9">
+          <section
+            id="kitchen-section-2"
+            className="scroll-mt-32 rounded-3xl border border-black/10 bg-white p-6 md:p-9"
+          >
 
             <SectionHeader
-              number="B"
+              number="2"
               title="Client Requirements"
               description="This section establishes the client's overall expectations before detailed kitchen decisions are made."
               required
@@ -1181,7 +1447,7 @@ export default function KitchenBriefPage() {
                 number="03"
                 title="Preferred design style"
               >
-                <CheckboxGroup
+                <SelectionGroup
                   options={[
                     "Modern",
                     "Contemporary",
@@ -1226,7 +1492,7 @@ export default function KitchenBriefPage() {
                 title="Are client reference images available?"
                 description="Reference images help KBX understand the client's visual expectations."
               >
-                <RadioGroup
+                <SingleSelectGroup
                   options={[
                     "Yes",
                     "No",
@@ -1291,12 +1557,15 @@ export default function KitchenBriefPage() {
 
           </section>
 
-          {/* SECTION C */}
+          {/* SECTION 3 */}
 
-          <section className="rounded-3xl border border-black/10 bg-white p-6 md:p-9">
+          <section
+            id="kitchen-section-3"
+            className="scroll-mt-32 rounded-3xl border border-black/10 bg-white p-6 md:p-9"
+          >
 
             <SectionHeader
-              number="C"
+              number="3"
               title="Kitchen Requirements"
               description="These decisions directly affect cabinet construction, elevations, dimensions, materials and the final appearance of the kitchen."
               required
@@ -1309,7 +1578,7 @@ export default function KitchenBriefPage() {
                 title="Does the client want built-in cabinetry?"
                 required
               >
-                <RadioGroup
+                <SingleSelectGroup
                   options={[
                     "Yes",
                     "No",
@@ -1331,7 +1600,7 @@ export default function KitchenBriefPage() {
                 number="06"
                 title="Cabinet style / profile"
               >
-                <CheckboxGroup
+                <SelectionGroup
                   options={[
                     "L-profile",
                     "C-profile",
@@ -1400,13 +1669,11 @@ export default function KitchenBriefPage() {
 
               </div>
 
-              {/* BACKSPLASH */}
-
               <Question
                 number="07"
                 title="Does the client want a backsplash?"
               >
-                <RadioGroup
+                <SingleSelectGroup
                   options={[
                     "Yes",
                     "No",
@@ -1433,7 +1700,7 @@ export default function KitchenBriefPage() {
                       Backsplash Type
                     </label>
 
-                    <RadioGroup
+                    <SingleSelectGroup
                       options={[
                         "Full-height backsplash",
                         "Standard backsplash",
@@ -1468,13 +1735,11 @@ export default function KitchenBriefPage() {
                 </div>
               )}
 
-              {/* WALL CABINETS */}
-
               <Question
                 number="08"
                 title="Does the client want wall cabinets?"
               >
-                <RadioGroup
+                <SingleSelectGroup
                   options={[
                     "Yes",
                     "No",
@@ -1502,7 +1767,7 @@ export default function KitchenBriefPage() {
                       title="Should wall cabinets reach the ceiling?"
                       description="Standard ceiling reference entered by KBX: 280 cm. Actual dimensions should be confirmed before final design."
                     >
-                      <RadioGroup
+                      <SingleSelectGroup
                         options={[
                           "Yes",
                           "No",
@@ -1526,7 +1791,7 @@ export default function KitchenBriefPage() {
                       <Question
                         title="Does the client want loft / top cabinets?"
                       >
-                        <RadioGroup
+                        <SingleSelectGroup
                           options={[
                             "Yes",
                             "No",
@@ -1551,7 +1816,7 @@ export default function KitchenBriefPage() {
                       <Question
                         title="How will the client access the upper cabinets?"
                       >
-                        <CheckboxGroup
+                        <SelectionGroup
                           options={[
                             "Step ladder available",
                             "Movable stool / ladder required",
@@ -1595,13 +1860,11 @@ export default function KitchenBriefPage() {
                   </div>
                 )}
 
-              {/* GLASS */}
-
               <Question
                 number="09"
                 title="Does the client want glass doors?"
               >
-                <RadioGroup
+                <SingleSelectGroup
                   options={[
                     "Yes",
                     "No",
@@ -1622,7 +1885,7 @@ export default function KitchenBriefPage() {
                 "Yes" && (
                 <>
                   <Question title="Where should glass doors be used?">
-                    <CheckboxGroup
+                    <SelectionGroup
                       options={[
                         "Wall Cabinets",
                         "Tall Units",
@@ -1665,13 +1928,11 @@ export default function KitchenBriefPage() {
                 </>
               )}
 
-              {/* LED */}
-
               <Question
                 number="10"
                 title="Does the client want LED lighting?"
               >
-                <RadioGroup
+                <SingleSelectGroup
                   options={[
                     "Yes",
                     "No",
@@ -1692,7 +1953,7 @@ export default function KitchenBriefPage() {
                 "Yes" && (
                 <>
                   <Question title="Where should LED lighting be installed?">
-                    <CheckboxGroup
+                    <SelectionGroup
                       options={[
                         "Inside glass wall cabinets",
                         "Inside tall units with glass",
@@ -1741,7 +2002,7 @@ export default function KitchenBriefPage() {
                 number="11"
                 title="Does the client want open shelves?"
               >
-                <RadioGroup
+                <SingleSelectGroup
                   options={[
                     "Yes",
                     "No",
@@ -1762,12 +2023,15 @@ export default function KitchenBriefPage() {
 
           </section>
 
-          {/* SECTION D */}
+          {/* SECTION 4 */}
 
-          <section className="rounded-3xl border border-black/10 bg-white p-6 md:p-9">
+          <section
+            id="kitchen-section-4"
+            className="scroll-mt-32 rounded-3xl border border-black/10 bg-white p-6 md:p-9"
+          >
 
             <SectionHeader
-              number="D"
+              number="4"
               title="Tall Units & Storage"
               description="Tall-unit requirements determine how appliances, pantry storage, refrigeration and vertical storage are organised."
             />
@@ -1778,7 +2042,7 @@ export default function KitchenBriefPage() {
                 number="12"
                 title="Does the client require tall units?"
               >
-                <RadioGroup
+                <SingleSelectGroup
                   options={[
                     "Yes",
                     "No",
@@ -1799,7 +2063,7 @@ export default function KitchenBriefPage() {
                 "Yes" && (
                 <>
                   <Question title="Required tall units">
-                    <CheckboxGroup
+                    <SelectionGroup
                       options={[
                         "Oven tower",
                         "Microwave tower",
@@ -1864,7 +2128,7 @@ export default function KitchenBriefPage() {
                         Should Tall Units Reach Ceiling?
                       </label>
 
-                      <RadioGroup
+                      <SingleSelectGroup
                         options={[
                           "Yes",
                           "No",
@@ -1888,7 +2152,7 @@ export default function KitchenBriefPage() {
                         Loft Above Tall Units?
                       </label>
 
-                      <RadioGroup
+                      <SingleSelectGroup
                         options={[
                           "Yes",
                           "No",
@@ -1915,12 +2179,15 @@ export default function KitchenBriefPage() {
 
           </section>
 
-          {/* SECTION E */}
+          {/* SECTION 5 */}
 
-          <section className="rounded-3xl border border-black/10 bg-white p-6 md:p-9">
+          <section
+            id="kitchen-section-5"
+            className="scroll-mt-32 rounded-3xl border border-black/10 bg-white p-6 md:p-9"
+          >
 
             <SectionHeader
-              number="E"
+              number="5"
               title="Kitchen Island"
               description="An island affects circulation, working clearances, seating, services and sometimes electrical/plumbing coordination."
             />
@@ -1931,7 +2198,7 @@ export default function KitchenBriefPage() {
                 number="13"
                 title="Does the client want an island?"
               >
-                <RadioGroup
+                <SingleSelectGroup
                   options={[
                     "Yes",
                     "No",
@@ -1952,7 +2219,7 @@ export default function KitchenBriefPage() {
                 "Yes" && (
                 <>
                   <Question title="Purpose of the island">
-                    <CheckboxGroup
+                    <SelectionGroup
                       options={[
                         "Food preparation",
                         "Storage",
@@ -1977,7 +2244,7 @@ export default function KitchenBriefPage() {
                   </Question>
 
                   <Question title="Is seating required?">
-                    <RadioGroup
+                    <SingleSelectGroup
                       options={[
                         "Yes",
                         "No",
@@ -1997,7 +2264,7 @@ export default function KitchenBriefPage() {
                   </Question>
 
                   <Question title="Appliances / services on island">
-                    <CheckboxGroup
+                    <SelectionGroup
                       options={[
                         "Hob",
                         "Sink",
@@ -2025,12 +2292,15 @@ export default function KitchenBriefPage() {
 
           </section>
 
-          {/* SECTION F */}
+          {/* SECTION 6 */}
 
-          <section className="rounded-3xl border border-black/10 bg-white p-6 md:p-9">
+          <section
+            id="kitchen-section-6"
+            className="scroll-mt-32 rounded-3xl border border-black/10 bg-white p-6 md:p-9"
+          >
 
             <SectionHeader
-              number="F"
+              number="6"
               title="Appliances"
               description="Appliance information is mandatory because cabinetry and service locations must be coordinated with the actual appliance dimensions and installation requirements."
               required
@@ -2044,7 +2314,7 @@ export default function KitchenBriefPage() {
                 description="If appliances are already owned, accurate model numbers and dimensions should be provided wherever possible."
                 required
               >
-                <RadioGroup
+                <SingleSelectGroup
                   options={[
                     "Yes",
                     "No",
@@ -2063,7 +2333,6 @@ export default function KitchenBriefPage() {
               </Question>
 
               <div className="rounded-2xl border border-[#910B0A]/10 bg-[#910B0A]/5 p-5">
-
                 <p className="text-sm font-semibold">
                   Appliance information
                 </p>
@@ -2074,7 +2343,6 @@ export default function KitchenBriefPage() {
                   installation requirements should also be confirmed before
                   final cabinet production.
                 </p>
-
               </div>
 
               {/* REFRIGERATOR */}
@@ -2159,7 +2427,7 @@ export default function KitchenBriefPage() {
                       Installation Type
                     </label>
 
-                    <RadioGroup
+                    <SingleSelectGroup
                       options={[
                         "Freestanding",
                         "Built-in",
@@ -2263,7 +2531,7 @@ export default function KitchenBriefPage() {
                       Installation Type
                     </label>
 
-                    <RadioGroup
+                    <SingleSelectGroup
                       options={[
                         "Freestanding",
                         "Built-in",
@@ -2367,7 +2635,7 @@ export default function KitchenBriefPage() {
                       Installation Type
                     </label>
 
-                    <RadioGroup
+                    <SingleSelectGroup
                       options={[
                         "Countertop",
                         "Built-in",
@@ -2537,7 +2805,7 @@ export default function KitchenBriefPage() {
                       Hob Type
                     </label>
 
-                    <RadioGroup
+                    <SingleSelectGroup
                       options={[
                         "Gas",
                         "Electric",
@@ -2720,12 +2988,10 @@ export default function KitchenBriefPage() {
                 </div>
               </div>
 
-              {/* APPLIANCES PROVIDED */}
-
               <Question
                 title="If the client does not own the appliances, who will select/provide them?"
               >
-                <RadioGroup
+                <SingleSelectGroup
                   options={[
                     "Client",
                     "Company",
@@ -2746,12 +3012,15 @@ export default function KitchenBriefPage() {
 
           </section>
 
-          {/* SECTION G */}
+          {/* SECTION 7 */}
 
-          <section className="rounded-3xl border border-black/10 bg-white p-6 md:p-9">
+          <section
+            id="kitchen-section-7"
+            className="scroll-mt-32 rounded-3xl border border-black/10 bg-white p-6 md:p-9"
+          >
 
             <SectionHeader
-              number="G"
+              number="7"
               title="Sink & Water Point"
               description="Sink dimensions and mounting type affect countertop cut-outs, cabinet configuration and plumbing coordination."
               required
@@ -2764,7 +3033,7 @@ export default function KitchenBriefPage() {
                 title="Sink provided by"
                 required
               >
-                <RadioGroup
+                <SingleSelectGroup
                   options={[
                     "Client",
                     "Company",
@@ -2782,7 +3051,7 @@ export default function KitchenBriefPage() {
               </Question>
 
               <Question title="Sink type">
-                <CheckboxGroup
+                <SelectionGroup
                   options={[
                     "Single bowl",
                     "Double bowl",
@@ -2855,12 +3124,15 @@ export default function KitchenBriefPage() {
 
           </section>
 
-          {/* SECTION H */}
+          {/* SECTION 8 */}
 
-          <section className="rounded-3xl border border-black/10 bg-white p-6 md:p-9">
+          <section
+            id="kitchen-section-8"
+            className="scroll-mt-32 rounded-3xl border border-black/10 bg-white p-6 md:p-9"
+          >
 
             <SectionHeader
-              number="H"
+              number="8"
               title="Kitchen Functional Requirements"
               description="Storage should be designed around the way the client actually cooks, stores food and uses appliances."
             />
@@ -2871,7 +3143,7 @@ export default function KitchenBriefPage() {
                 number="16"
                 title="What must the kitchen contain?"
               >
-                <CheckboxGroup
+                <SelectionGroup
                   options={[
                     "Cutlery drawers",
                     "Pots / pan storage",
@@ -2884,6 +3156,7 @@ export default function KitchenBriefPage() {
                     "Glass cabinets",
                     "Display cabinets",
                     "Wine storage",
+                    "Drawers",
                     "Other",
                   ]}
                   values={
@@ -2935,12 +3208,15 @@ export default function KitchenBriefPage() {
 
           </section>
 
-          {/* SECTION I */}
+          {/* SECTION 9 */}
 
-          <section className="rounded-3xl border border-black/10 bg-white p-6 md:p-9">
+          <section
+            id="kitchen-section-9"
+            className="scroll-mt-32 rounded-3xl border border-black/10 bg-white p-6 md:p-9"
+          >
 
             <SectionHeader
-              number="I"
+              number="9"
               title='Client "Do Not Want" List'
               description="Knowing what the client dislikes is just as important as knowing what they want. This helps KBX avoid unsuitable design directions."
             />
@@ -2951,7 +3227,7 @@ export default function KitchenBriefPage() {
                 number="17"
                 title="What does the client NOT want?"
               >
-                <CheckboxGroup
+                <SelectionGroup
                   options={[
                     "Wall cabinets",
                     "Tall units",
@@ -3022,12 +3298,15 @@ export default function KitchenBriefPage() {
 
           </section>
 
-          {/* SECTION J */}
+          {/* SECTION 10 */}
 
-          <section className="rounded-3xl border border-black/10 bg-white p-6 md:p-9">
+          <section
+            id="kitchen-section-10"
+            className="scroll-mt-32 rounded-3xl border border-black/10 bg-white p-6 md:p-9"
+          >
 
             <SectionHeader
-              number="J"
+              number="10"
               title="Additional Information"
               description="Use this space for anything important that has not been captured elsewhere."
             />
@@ -3052,12 +3331,15 @@ export default function KitchenBriefPage() {
 
           </section>
 
-          {/* SECTION K */}
+          {/* SECTION 11 */}
 
-          <section className="rounded-3xl border border-black/10 bg-white p-6 md:p-9">
+          <section
+            id="kitchen-section-11"
+            className="scroll-mt-32 rounded-3xl border border-black/10 bg-white p-6 md:p-9"
+          >
 
             <SectionHeader
-              number="K"
+              number="11"
               title="Client Confirmation"
               description="The information below should be confirmed before the project moves into design. This protects both the client and KBX from designing from outdated or unverified information."
               required
@@ -3065,79 +3347,119 @@ export default function KitchenBriefPage() {
 
             <div className="mt-8 space-y-4">
 
-              <label className="flex cursor-pointer items-start gap-4 rounded-2xl border border-black/10 bg-[#fafaf8] p-5">
-                <input
-                  type="checkbox"
-                  checked={
+              <button
+                type="button"
+                onClick={() =>
+                  updateField(
+                    "informationChecked",
+                    !form.informationChecked
+                  )
+                }
+                aria-pressed={
+                  form.informationChecked
+                }
+                className={`flex w-full items-start gap-4 rounded-2xl border p-5 text-left transition ${
+                  form.informationChecked
+                    ? "border-[#910B0A] bg-[#910B0A]/5"
+                    : "border-black/10 bg-[#fafaf8]"
+                }`}
+              >
+                <span
+                  className={`mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded border text-xs font-bold ${
                     form.informationChecked
-                  }
-                  onChange={(event) =>
-                    updateField(
-                      "informationChecked",
-                      event.target.checked
-                    )
-                  }
-                  className="mt-1 h-5 w-5 shrink-0 accent-[#910B0A]"
-                />
+                      ? "border-[#910B0A] bg-[#910B0A] text-white"
+                      : "border-black/20 bg-white text-transparent"
+                  }`}
+                >
+                  ✓
+                </span>
 
                 <span className="text-sm leading-6">
                   I confirm that the information provided above has been
                   checked and represents the client&apos;s current
                   requirements.
                   <span
-                    style={{ color: RED }}
+                    style={{
+                      color: RED,
+                    }}
                   >
                     {" "}
                     *
                   </span>
                 </span>
-              </label>
+              </button>
 
-              <label className="flex cursor-pointer items-start gap-4 rounded-2xl border border-black/10 bg-[#fafaf8] p-5">
-                <input
-                  type="checkbox"
-                  checked={
+              <button
+                type="button"
+                onClick={() =>
+                  updateField(
+                    "clientRequirementsConfirmed",
+                    !form.clientRequirementsConfirmed
+                  )
+                }
+                aria-pressed={
+                  form.clientRequirementsConfirmed
+                }
+                className={`flex w-full items-start gap-4 rounded-2xl border p-5 text-left transition ${
+                  form.clientRequirementsConfirmed
+                    ? "border-[#910B0A] bg-[#910B0A]/5"
+                    : "border-black/10 bg-[#fafaf8]"
+                }`}
+              >
+                <span
+                  className={`mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded border text-xs font-bold ${
                     form.clientRequirementsConfirmed
-                  }
-                  onChange={(event) =>
-                    updateField(
-                      "clientRequirementsConfirmed",
-                      event.target.checked
-                    )
-                  }
-                  className="mt-1 h-5 w-5 shrink-0 accent-[#910B0A]"
-                />
+                      ? "border-[#910B0A] bg-[#910B0A] text-white"
+                      : "border-black/20 bg-white text-transparent"
+                  }`}
+                >
+                  ✓
+                </span>
 
                 <span className="text-sm leading-6">
                   Client requirements have been confirmed.
                   <span
-                    style={{ color: RED }}
+                    style={{
+                      color: RED,
+                    }}
                   >
                     {" "}
                     *
                   </span>
                 </span>
-              </label>
+              </button>
 
-              <label className="flex cursor-pointer items-start gap-4 rounded-2xl border border-black/10 bg-[#fafaf8] p-5">
-                <input
-                  type="checkbox"
-                  checked={
+              <button
+                type="button"
+                onClick={() =>
+                  updateField(
+                    "readyForDesign",
+                    !form.readyForDesign
+                  )
+                }
+                aria-pressed={
+                  form.readyForDesign
+                }
+                className={`flex w-full items-start gap-4 rounded-2xl border p-5 text-left transition ${
+                  form.readyForDesign
+                    ? "border-[#910B0A] bg-[#910B0A]/5"
+                    : "border-black/10 bg-[#fafaf8]"
+                }`}
+              >
+                <span
+                  className={`mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded border text-xs font-bold ${
                     form.readyForDesign
-                  }
-                  onChange={(event) =>
-                    updateField(
-                      "readyForDesign",
-                      event.target.checked
-                    )
-                  }
-                  className="mt-1 h-5 w-5 shrink-0 accent-[#910B0A]"
-                />
+                      ? "border-[#910B0A] bg-[#910B0A] text-white"
+                      : "border-black/20 bg-white text-transparent"
+                  }`}
+                >
+                  ✓
+                </span>
 
                 <span className="text-sm leading-6">
                   The project is ready to proceed to design.
                 </span>
-              </label>
+              </button>
 
               <div className="grid gap-5 border-t border-black/10 pt-6 md:grid-cols-2">
 
@@ -3228,12 +3550,12 @@ export default function KitchenBriefPage() {
 
           <div className="flex items-center">
 
-            <div className="relative h-[42px] w-[90px]">
+            <div className="relative h-[48px] w-[100px] shrink-0 sm:h-[52px] sm:w-[105px]">
               <Image
                 src="/kbx-logo.svg"
                 alt="KBX Spatial Atelier"
                 fill
-                sizes="90px"
+                sizes="105px"
                 className="object-contain object-left"
               />
             </div>
