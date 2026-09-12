@@ -3,44 +3,12 @@
 import Image from "next/image";
 import Link from "next/link";
 import { useState } from "react";
+import { supabase } from "../lib/supabase";
 
 const RED = "#910B0A";
 
-const CLIENT_ACCOUNTS_KEY = "kbxClientAccounts";
 const CURRENT_CLIENT_KEY = "kbxCurrentClientId";
 const LEGACY_CLIENT_KEY = "kbxClient";
-
-type ClientAccount = {
-  id: string;
-  name: string;
-  email: string;
-  contact: string;
-  password?: string;
-  createdAt?: string;
-};
-
-function generateClientId() {
-  return `client-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
-}
-
-function getAccounts(): ClientAccount[] {
-  if (typeof window === "undefined") return [];
-
-  try {
-    const stored = localStorage.getItem(CLIENT_ACCOUNTS_KEY);
-    if (!stored) return [];
-
-    const parsed = JSON.parse(stored);
-
-    return Array.isArray(parsed) ? parsed : [];
-  } catch {
-    return [];
-  }
-}
-
-function saveAccounts(accounts: ClientAccount[]) {
-  localStorage.setItem(CLIENT_ACCOUNTS_KEY, JSON.stringify(accounts));
-}
 
 export default function ClientProfilePage() {
   const [mode, setMode] = useState<"create" | "login">("create");
@@ -75,7 +43,9 @@ export default function ClientProfilePage() {
     setMessage(text);
   }
 
-  function handleCreateAccount(e: React.FormEvent<HTMLFormElement>) {
+  async function handleCreateAccount(
+    e: React.FormEvent<HTMLFormElement>
+  ) {
     e.preventDefault();
 
     setMessage("");
@@ -129,61 +99,85 @@ export default function ClientProfilePage() {
     setLoading(true);
 
     try {
-      const accounts = getAccounts();
+      const { data, error } = await supabase.auth.signUp({
+        email: trimmedEmail,
+        password,
+        options: {
+          data: {
+            full_name: trimmedName,
+            contact: trimmedContact,
+          },
+        },
+      });
 
-      const existingAccount = accounts.find(
-        (account) => account.email.toLowerCase() === trimmedEmail
-      );
+      if (error) {
+        const errorMessage = error.message.toLowerCase();
 
-      if (existingAccount) {
-        showError(
-          "An account with this email already exists. Please log in instead."
-        );
+        if (
+          errorMessage.includes("already registered") ||
+          errorMessage.includes("already exists") ||
+          errorMessage.includes("user already registered")
+        ) {
+          showError(
+            "An account with this email already exists. Please log in instead."
+          );
+        } else {
+          showError(error.message);
+        }
+
         setLoading(false);
         return;
       }
 
-      const newClient: ClientAccount = {
-        id: generateClientId(),
-        name: trimmedName,
-        email: trimmedEmail,
-        contact: trimmedContact,
-        password,
-        createdAt: new Date().toISOString(),
-      };
+      /*
+       * Supabase creates the client_profiles record automatically
+       * through the database trigger we created earlier.
+       */
 
-      const updatedAccounts = [...accounts, newClient];
+      if (data.user) {
+        localStorage.setItem(CURRENT_CLIENT_KEY, data.user.id);
 
-      saveAccounts(updatedAccounts);
-
-      localStorage.setItem(CURRENT_CLIENT_KEY, newClient.id);
+        localStorage.setItem(
+          LEGACY_CLIENT_KEY,
+          JSON.stringify({
+            id: data.user.id,
+            name: trimmedName,
+            email: trimmedEmail,
+            contact: trimmedContact,
+          })
+        );
+      }
 
       /*
-       * Keep the legacy client object as well so existing pages
-       * that still read kbxClient continue to work.
+       * If email confirmation is enabled in Supabase,
+       * there may not be an active session yet.
        */
-      localStorage.setItem(
-        LEGACY_CLIENT_KEY,
-        JSON.stringify({
-          id: newClient.id,
-          name: newClient.name,
-          email: newClient.email,
-          contact: newClient.contact,
-        })
-      );
+      if (!data.session) {
+        showSuccess(
+          "Your profile has been created. Please check your email to confirm your account before logging in."
+        );
+
+        setPassword("");
+        setConfirmPassword("");
+        setLoading(false);
+        return;
+      }
 
       showSuccess("Your client profile has been created.");
 
       window.location.href = "/client-portal";
-    } catch {
+    } catch (error) {
+      console.error("Create account error:", error);
+
       showError(
         "Something went wrong while creating your profile. Please try again."
       );
+
       setLoading(false);
     }
   }
 
-  function handleLogin(e: React.FormEvent<HTMLFormElement>) {
+  async function handleLogin(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
 
     setMessage("");
@@ -203,45 +197,109 @@ export default function ClientProfilePage() {
     setLoading(true);
 
     try {
-      const accounts = getAccounts();
+      const { data, error } = await supabase.auth.signInWithPassword({
+        email: trimmedEmail,
+        password: loginPassword,
+      });
 
-      const account = accounts.find(
-        (item) =>
-          item.email.toLowerCase() === trimmedEmail &&
-          item.password === loginPassword
-      );
-
-      if (!account) {
+      if (error) {
         showError("Incorrect email or password.");
         setLoading(false);
         return;
       }
 
-      localStorage.setItem(CURRENT_CLIENT_KEY, account.id);
+      if (!data.user) {
+        showError("Unable to verify your account. Please try again.");
+        setLoading(false);
+        return;
+      }
+
+      /*
+       * Keep these temporary compatibility values because
+       * some of the existing client portal code may still
+       * read them.
+       */
+      localStorage.setItem(CURRENT_CLIENT_KEY, data.user.id);
 
       localStorage.setItem(
         LEGACY_CLIENT_KEY,
         JSON.stringify({
-          id: account.id,
-          name: account.name,
-          email: account.email,
-          contact: account.contact,
+          id: data.user.id,
+          name:
+            data.user.user_metadata?.full_name ||
+            data.user.email ||
+            "Client",
+          email: data.user.email || trimmedEmail,
+          contact: data.user.user_metadata?.contact || "",
         })
       );
 
       showSuccess("Login successful.");
 
       window.location.href = "/client-portal";
-    } catch {
-      showError("Something went wrong while logging in. Please try again.");
+    } catch (error) {
+      console.error("Login error:", error);
+
+      showError(
+        "Something went wrong while logging in. Please try again."
+      );
+
       setLoading(false);
     }
   }
 
-  function handleForgotPassword() {
-    showError(
-      "Password recovery will be available when production authentication is connected."
-    );
+  async function handleForgotPassword() {
+    setMessage("");
+
+    const trimmedEmail = loginEmail.trim().toLowerCase();
+
+    if (!trimmedEmail) {
+      showError(
+        "Please enter your email address above, then click Forgot password."
+      );
+      return;
+    }
+
+    const emailPattern = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+
+    if (!emailPattern.test(trimmedEmail)) {
+      showError("Please enter a valid email address first.");
+      return;
+    }
+
+    setLoading(true);
+
+    try {
+      const resetUrl = `${window.location.origin}/client-profile/reset-password`;
+
+      const { error } = await supabase.auth.resetPasswordForEmail(
+        trimmedEmail,
+        {
+          redirectTo: resetUrl,
+        }
+      );
+
+      if (error) {
+        console.error("Password reset error:", error);
+        showError(error.message);
+        setLoading(false);
+        return;
+      }
+
+      showSuccess(
+        "If an account exists with this email, a password reset link has been sent. Please check your inbox."
+      );
+
+      setLoading(false);
+    } catch (error) {
+      console.error("Password reset error:", error);
+
+      showError(
+        "Something went wrong while requesting your password reset. Please try again."
+      );
+
+      setLoading(false);
+    }
   }
 
   return (
@@ -262,7 +320,7 @@ export default function ClientProfilePage() {
               />
             </div>
 
-            <div className="ml-2 hidden sm:block leading-none">
+            <div className="ml-2 hidden leading-none sm:block">
               <p className="text-sm font-semibold tracking-tight">
                 KBX Spatial Atelier
               </p>
@@ -303,7 +361,9 @@ export default function ClientProfilePage() {
                   <h1 className="mt-6 max-w-md text-3xl font-semibold leading-tight tracking-tight md:text-4xl">
                     Your project,
                     <br />
-                    <span style={{ color: RED }}>beautifully organised.</span>
+                    <span style={{ color: RED }}>
+                      beautifully organised.
+                    </span>
                   </h1>
 
                   <p className="mt-5 max-w-md text-sm leading-6 text-white/55">
@@ -344,6 +404,7 @@ export default function ClientProfilePage() {
 
                       <div>
                         <p className="text-sm font-medium">{title}</p>
+
                         <p className="mt-1 text-xs leading-5 text-white/40">
                           {description}
                         </p>
@@ -432,7 +493,10 @@ export default function ClientProfilePage() {
 
               {/* CREATE PROFILE FORM */}
               {mode === "create" && (
-                <form onSubmit={handleCreateAccount} className="space-y-4">
+                <form
+                  onSubmit={handleCreateAccount}
+                  className="space-y-4"
+                >
                   <div>
                     <label className="mb-1.5 block text-xs font-medium text-black/65">
                       Full Name
@@ -444,7 +508,8 @@ export default function ClientProfilePage() {
                       onChange={(e) => setFullName(e.target.value)}
                       placeholder="Enter your full name"
                       autoComplete="name"
-                      className="w-full rounded-xl border border-black/10 bg-[#f7f7f5] px-4 py-3 text-sm outline-none transition placeholder:text-black/30 focus:border-black/30"
+                      disabled={loading}
+                      className="w-full rounded-xl border border-black/10 bg-[#f7f7f5] px-4 py-3 text-sm outline-none transition placeholder:text-black/30 focus:border-black/30 disabled:opacity-60"
                     />
                   </div>
 
@@ -459,7 +524,8 @@ export default function ClientProfilePage() {
                       onChange={(e) => setEmail(e.target.value)}
                       placeholder="you@example.com"
                       autoComplete="email"
-                      className="w-full rounded-xl border border-black/10 bg-[#f7f7f5] px-4 py-3 text-sm outline-none transition placeholder:text-black/30 focus:border-black/30"
+                      disabled={loading}
+                      className="w-full rounded-xl border border-black/10 bg-[#f7f7f5] px-4 py-3 text-sm outline-none transition placeholder:text-black/30 focus:border-black/30 disabled:opacity-60"
                     />
                   </div>
 
@@ -474,7 +540,8 @@ export default function ClientProfilePage() {
                       onChange={(e) => setContact(e.target.value)}
                       placeholder="+233 ..."
                       autoComplete="tel"
-                      className="w-full rounded-xl border border-black/10 bg-[#f7f7f5] px-4 py-3 text-sm outline-none transition placeholder:text-black/30 focus:border-black/30"
+                      disabled={loading}
+                      className="w-full rounded-xl border border-black/10 bg-[#f7f7f5] px-4 py-3 text-sm outline-none transition placeholder:text-black/30 focus:border-black/30 disabled:opacity-60"
                     />
                   </div>
 
@@ -490,13 +557,15 @@ export default function ClientProfilePage() {
                         onChange={(e) => setPassword(e.target.value)}
                         placeholder="Create a password"
                         autoComplete="new-password"
-                        className="w-full rounded-xl border border-black/10 bg-[#f7f7f5] px-4 py-3 pr-20 text-sm outline-none transition placeholder:text-black/30 focus:border-black/30"
+                        disabled={loading}
+                        className="w-full rounded-xl border border-black/10 bg-[#f7f7f5] px-4 py-3 pr-20 text-sm outline-none transition placeholder:text-black/30 focus:border-black/30 disabled:opacity-60"
                       />
 
                       <button
                         type="button"
                         onClick={() => setShowPassword(!showPassword)}
-                        className="absolute right-3 top-1/2 -translate-y-1/2 text-xs font-medium text-black/40 hover:text-black"
+                        disabled={loading}
+                        className="absolute right-3 top-1/2 -translate-y-1/2 text-xs font-medium text-black/40 hover:text-black disabled:opacity-50"
                       >
                         {showPassword ? "Hide" : "Show"}
                       </button>
@@ -522,7 +591,8 @@ export default function ClientProfilePage() {
                         }
                         placeholder="Confirm your password"
                         autoComplete="new-password"
-                        className="w-full rounded-xl border border-black/10 bg-[#f7f7f5] px-4 py-3 pr-20 text-sm outline-none transition placeholder:text-black/30 focus:border-black/30"
+                        disabled={loading}
+                        className="w-full rounded-xl border border-black/10 bg-[#f7f7f5] px-4 py-3 pr-20 text-sm outline-none transition placeholder:text-black/30 focus:border-black/30 disabled:opacity-60"
                       />
 
                       <button
@@ -530,7 +600,8 @@ export default function ClientProfilePage() {
                         onClick={() =>
                           setShowConfirmPassword(!showConfirmPassword)
                         }
-                        className="absolute right-3 top-1/2 -translate-y-1/2 text-xs font-medium text-black/40 hover:text-black"
+                        disabled={loading}
+                        className="absolute right-3 top-1/2 -translate-y-1/2 text-xs font-medium text-black/40 hover:text-black disabled:opacity-50"
                       >
                         {showConfirmPassword ? "Hide" : "Show"}
                       </button>
@@ -544,7 +615,9 @@ export default function ClientProfilePage() {
                       className="w-full rounded-xl px-4 py-3.5 text-sm font-semibold text-white transition hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-50"
                       style={{ backgroundColor: RED }}
                     >
-                      {loading ? "Creating Profile..." : "Create Client Profile →"}
+                      {loading
+                        ? "Creating Profile..."
+                        : "Create Client Profile →"}
                     </button>
                   </div>
 
@@ -569,7 +642,8 @@ export default function ClientProfilePage() {
                       onChange={(e) => setLoginEmail(e.target.value)}
                       placeholder="you@example.com"
                       autoComplete="email"
-                      className="w-full rounded-xl border border-black/10 bg-[#f7f7f5] px-4 py-3 text-sm outline-none transition placeholder:text-black/30 focus:border-black/30"
+                      disabled={loading}
+                      className="w-full rounded-xl border border-black/10 bg-[#f7f7f5] px-4 py-3 text-sm outline-none transition placeholder:text-black/30 focus:border-black/30 disabled:opacity-60"
                     />
                   </div>
 
@@ -582,7 +656,8 @@ export default function ClientProfilePage() {
                       <button
                         type="button"
                         onClick={handleForgotPassword}
-                        className="text-[11px] font-medium text-black/40 transition hover:text-black"
+                        disabled={loading}
+                        className="text-[11px] font-medium text-black/40 transition hover:text-black disabled:opacity-50"
                       >
                         Forgot password?
                       </button>
@@ -592,10 +667,13 @@ export default function ClientProfilePage() {
                       <input
                         type={showLoginPassword ? "text" : "password"}
                         value={loginPassword}
-                        onChange={(e) => setLoginPassword(e.target.value)}
+                        onChange={(e) =>
+                          setLoginPassword(e.target.value)
+                        }
                         placeholder="Enter your password"
                         autoComplete="current-password"
-                        className="w-full rounded-xl border border-black/10 bg-[#f7f7f5] px-4 py-3 pr-20 text-sm outline-none transition placeholder:text-black/30 focus:border-black/30"
+                        disabled={loading}
+                        className="w-full rounded-xl border border-black/10 bg-[#f7f7f5] px-4 py-3 pr-20 text-sm outline-none transition placeholder:text-black/30 focus:border-black/30 disabled:opacity-60"
                       />
 
                       <button
@@ -603,7 +681,8 @@ export default function ClientProfilePage() {
                         onClick={() =>
                           setShowLoginPassword(!showLoginPassword)
                         }
-                        className="absolute right-3 top-1/2 -translate-y-1/2 text-xs font-medium text-black/40 hover:text-black"
+                        disabled={loading}
+                        className="absolute right-3 top-1/2 -translate-y-1/2 text-xs font-medium text-black/40 hover:text-black disabled:opacity-50"
                       >
                         {showLoginPassword ? "Hide" : "Show"}
                       </button>
