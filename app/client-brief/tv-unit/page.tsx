@@ -5,6 +5,7 @@ import Link from "next/link";
 import {
   ChangeEvent,
   FormEvent,
+  ReactNode,
   useEffect,
   useMemo,
   useState,
@@ -36,6 +37,7 @@ type TVUnitForm = {
   projectTypeOther: string;
 
   designGoal: string;
+  mainRequirements: string;
   designStyles: string[];
   designStyleOther: string;
 
@@ -96,6 +98,7 @@ const initialForm: TVUnitForm = {
   projectTypeOther: "",
 
   designGoal: "",
+  mainRequirements: "",
   designStyles: [],
   designStyleOther: "",
 
@@ -137,6 +140,17 @@ const initialForm: TVUnitForm = {
   clientSignature: "",
 };
 
+const sectionIds = [
+  "tv-unit-section-1",
+  "tv-unit-section-2",
+  "tv-unit-section-3",
+  "tv-unit-section-4",
+  "tv-unit-section-5",
+  "tv-unit-section-6",
+  "tv-unit-section-7",
+  "tv-unit-section-8",
+];
+
 function readStoredData<T>(key: string): T | null {
   if (typeof window === "undefined") {
     return null;
@@ -165,9 +179,8 @@ function getClientFromStorage(): ClientAccount | null {
       CLIENT_ACCOUNTS_KEY
     );
 
-    const currentClientId = window.localStorage.getItem(
-      CURRENT_CLIENT_KEY
-    );
+    const currentClientId =
+      window.localStorage.getItem(CURRENT_CLIENT_KEY);
 
     if (accounts && currentClientId) {
       const currentClient = accounts.find(
@@ -179,123 +192,100 @@ function getClientFromStorage(): ClientAccount | null {
       }
     }
 
-    const legacyClient =
-      readStoredData<ClientAccount>(LEGACY_CLIENT_KEY);
-
-    return legacyClient;
+    return readStoredData<ClientAccount>(LEGACY_CLIENT_KEY);
   } catch {
     return null;
   }
 }
 
 function CheckboxGroup({
-  label,
   options,
-  selected,
+  values,
   onChange,
 }: {
-  label: string;
   options: string[];
-  selected: string[];
+  values: string[];
   onChange: (values: string[]) => void;
 }) {
-  const toggleOption = (option: string) => {
-    if (selected.includes(option)) {
-      onChange(
-        selected.filter((item) => item !== option)
-      );
-    } else {
-      onChange([...selected, option]);
-    }
-  };
+  function toggle(value: string) {
+    const next = values.includes(value)
+      ? values.filter((item) => item !== value)
+      : [...values, value];
+
+    onChange(next);
+  }
 
   return (
-    <div>
-      <label className="mb-3 block text-sm font-medium text-gray-800">
-        {label}
-      </label>
+    <div className="grid gap-2 sm:grid-cols-2">
+      {options.map((option) => {
+        const selected = values.includes(option);
 
-      <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-        {options.map((option) => {
-          const checked = selected.includes(option);
+        return (
+          <button
+            key={option}
+            type="button"
+            onClick={() => toggle(option)}
+            aria-pressed={selected}
+            className={`rounded-2xl border px-4 py-3 text-left text-sm transition ${
+              selected
+                ? "border-[#910B0A] bg-[#910B0A] text-white"
+                : "border-black/10 bg-white text-black/70 hover:border-black/25"
+            }`}
+          >
+            <span className="flex items-center justify-between gap-3">
+              <span>{option}</span>
 
-          return (
-            <label
-              key={option}
-              className={`flex cursor-pointer items-center gap-3 rounded-xl border px-4 py-3 text-sm transition ${
-                checked
-                  ? "border-[#910B0A] bg-[#910B0A]/5"
-                  : "border-gray-200 bg-white hover:border-gray-300"
-              }`}
-            >
-              <input
-                type="checkbox"
-                checked={checked}
-                onChange={() => toggleOption(option)}
-                className="h-4 w-4 rounded"
-                style={{ accentColor: RED }}
-              />
-
-              <span className="text-gray-700">
-                {option}
-              </span>
-            </label>
-          );
-        })}
-      </div>
+              {selected && (
+                <span className="text-sm font-bold">
+                  ✓
+                </span>
+              )}
+            </span>
+          </button>
+        );
+      })}
     </div>
   );
 }
 
 function RadioGroup({
-  label,
   options,
   value,
   onChange,
 }: {
-  label: string;
   options: string[];
   value: string;
   onChange: (value: string) => void;
 }) {
   return (
-    <div>
-      <label className="mb-3 block text-sm font-medium text-gray-800">
-        {label}
-      </label>
+    <div className="grid gap-2 sm:grid-cols-2">
+      {options.map((option) => {
+        const selected = value === option;
 
-      <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-        {options.map((option) => {
-          const checked = value === option;
+        return (
+          <button
+            key={option}
+            type="button"
+            onClick={() => onChange(option)}
+            aria-pressed={selected}
+            className={`rounded-2xl border px-4 py-3 text-left text-sm transition ${
+              selected
+                ? "border-[#910B0A] bg-[#910B0A] text-white"
+                : "border-black/10 bg-white text-black/70 hover:border-black/25"
+            }`}
+          >
+            <span className="flex items-center justify-between gap-3">
+              <span>{option}</span>
 
-          return (
-            <label
-              key={option}
-              className={`flex cursor-pointer items-center gap-3 rounded-xl border px-4 py-3 text-sm transition ${
-                checked
-                  ? "border-[#910B0A] bg-[#910B0A]/5"
-                  : "border-gray-200 bg-white hover:border-gray-300"
-              }`}
-            >
-              <input
-                type="radio"
-                name={`radio-${label}`}
-                value={option}
-                checked={checked}
-                onChange={(event) =>
-                  onChange(event.target.value)
-                }
-                className="h-4 w-4"
-                style={{ accentColor: RED }}
-              />
-
-              <span className="text-gray-700">
-                {option}
-              </span>
-            </label>
-          );
-        })}
-      </div>
+              {selected && (
+                <span className="text-sm font-bold">
+                  ✓
+                </span>
+              )}
+            </span>
+          </button>
+        );
+      })}
     </div>
   );
 }
@@ -304,37 +294,35 @@ function TextInput({
   label,
   value,
   onChange,
-  type = "text",
-  placeholder = "",
   required = false,
+  placeholder = "",
+  type = "text",
 }: {
   label: string;
   value: string;
   onChange: (value: string) => void;
-  type?: string;
-  placeholder?: string;
   required?: boolean;
+  placeholder?: string;
+  type?: string;
 }) {
   return (
     <div>
-      <label className="mb-2 block text-sm font-medium text-gray-800">
-        {label}
+      <label className="mb-2 block text-xs font-semibold uppercase tracking-[0.12em] text-black/60">
+        {label}{" "}
         {required && (
-          <span className="ml-1 text-[#910B0A]">
-            *
-          </span>
+          <span style={{ color: RED }}>*</span>
         )}
       </label>
 
       <input
         type={type}
         value={value}
-        placeholder={placeholder}
         required={required}
         onChange={(event) =>
           onChange(event.target.value)
         }
-        className="w-full rounded-xl border border-gray-200 bg-white px-4 py-3 text-sm outline-none transition placeholder:text-gray-400 focus:border-[#910B0A] focus:ring-2 focus:ring-[#910B0A]/10"
+        placeholder={placeholder}
+        className="w-full rounded-xl border border-black/10 bg-white px-4 py-3 text-sm outline-none transition placeholder:text-black/25 focus:border-[#910B0A]/50"
       />
     </div>
   );
@@ -344,35 +332,33 @@ function TextArea({
   label,
   value,
   onChange,
-  placeholder = "",
   required = false,
+  placeholder = "",
 }: {
   label: string;
   value: string;
   onChange: (value: string) => void;
-  placeholder?: string;
   required?: boolean;
+  placeholder?: string;
 }) {
   return (
     <div>
-      <label className="mb-2 block text-sm font-medium text-gray-800">
-        {label}
+      <label className="mb-2 block text-xs font-semibold uppercase tracking-[0.12em] text-black/60">
+        {label}{" "}
         {required && (
-          <span className="ml-1 text-[#910B0A]">
-            *
-          </span>
+          <span style={{ color: RED }}>*</span>
         )}
       </label>
 
       <textarea
         value={value}
-        placeholder={placeholder}
         required={required}
-        rows={5}
         onChange={(event) =>
           onChange(event.target.value)
         }
-        className="w-full resize-y rounded-xl border border-gray-200 bg-white px-4 py-3 text-sm outline-none transition placeholder:text-gray-400 focus:border-[#910B0A] focus:ring-2 focus:ring-[#910B0A]/10"
+        placeholder={placeholder}
+        rows={5}
+        className="w-full resize-y rounded-xl border border-black/10 bg-white px-4 py-3 text-sm leading-6 outline-none transition placeholder:text-black/25 focus:border-[#910B0A]/50"
       />
     </div>
   );
@@ -382,28 +368,41 @@ function SectionHeader({
   number,
   title,
   description,
+  required = false,
 }: {
   number: string;
   title: string;
   description?: string;
+  required?: boolean;
 }) {
   return (
-    <div className="mb-8 border-b border-gray-100 pb-5">
-      <div className="mb-2 flex items-center gap-3">
-        <span
-          className="text-xs font-bold tracking-[0.25em]"
-          style={{ color: RED }}
-        >
-          {number}
-        </span>
+    <div className="border-b border-black/10 pb-6">
+      <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
+        <div>
+          <p
+            className="text-xs font-semibold uppercase tracking-[0.2em]"
+            style={{ color: RED }}
+          >
+            Section {number}
+          </p>
 
-        <h2 className="text-xl font-semibold tracking-tight text-gray-900">
-          {title}
-        </h2>
+          <h2 className="mt-2 text-2xl font-semibold tracking-tight md:text-3xl">
+            {title}
+          </h2>
+        </div>
+
+        {required && (
+          <span
+            className="rounded-full bg-[#910B0A]/5 px-3 py-1.5 text-[10px] font-semibold uppercase tracking-[0.12em]"
+            style={{ color: RED }}
+          >
+            Required
+          </span>
+        )}
       </div>
 
       {description && (
-        <p className="max-w-3xl text-sm leading-6 text-gray-500">
+        <p className="mt-4 max-w-3xl text-sm leading-6 text-black/45">
           {description}
         </p>
       )}
@@ -412,11 +411,53 @@ function SectionHeader({
 }
 
 function Question({
+  number,
+  title,
+  description,
   children,
+  required = false,
 }: {
-  children: React.ReactNode;
+  number?: string;
+  title: string;
+  description?: string;
+  children: ReactNode;
+  required?: boolean;
 }) {
-  return <div className="space-y-3">{children}</div>;
+  return (
+    <div className="rounded-2xl border border-black/10 bg-[#fafaf8] p-5 md:p-6">
+      <div className="flex items-start gap-4">
+        {number && (
+          <span
+            className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-[10px] font-bold text-white"
+            style={{ backgroundColor: RED }}
+          >
+            {number}
+          </span>
+        )}
+
+        <div className="min-w-0 flex-1">
+          <h3 className="text-sm font-semibold md:text-base">
+            {title}{" "}
+            {required && (
+              <span style={{ color: RED }}>
+                *
+              </span>
+            )}
+          </h3>
+
+          {description && (
+            <p className="mt-1.5 text-xs leading-5 text-black/40">
+              {description}
+            </p>
+          )}
+
+          <div className="mt-4">
+            {children}
+          </div>
+        </div>
+      </div>
+    </div>
+  );
 }
 
 export default function TVUnitBriefPage() {
@@ -463,6 +504,11 @@ export default function TVUnitBriefPage() {
         ...initialForm,
         ...savedBrief.form,
       });
+    } else if (storedClient) {
+      setForm((previous) => ({
+        ...previous,
+        clientName: storedClient.name,
+      }));
     }
 
     setIsLoaded(true);
@@ -518,6 +564,20 @@ export default function TVUnitBriefPage() {
     setReferenceImages(files);
   };
 
+  const scrollToSection = (
+    index: number
+  ) => {
+    const element =
+      document.getElementById(
+        sectionIds[index]
+      );
+
+    element?.scrollIntoView({
+      behavior: "smooth",
+      block: "start",
+    });
+  };
+
   const requiredInformationComplete =
     useMemo(() => {
       return (
@@ -527,6 +587,7 @@ export default function TVUnitBriefPage() {
         form.date.trim() !== "" &&
         form.projectType.length > 0 &&
         form.designGoal.trim() !== "" &&
+        form.mainRequirements.trim() !== "" &&
         form.hasTV !== "" &&
         form.tvInstallation !== "" &&
         form.informationChecked &&
@@ -566,17 +627,6 @@ export default function TVUnitBriefPage() {
       const completedAt =
         new Date().toISOString();
 
-      const completedData: SavedBrief = {
-        client,
-        form,
-        completed: true,
-        submitted: true,
-        completedAt,
-        savedAt: completedAt,
-      };
-
-      const formData = new FormData();
-
       const briefData = {
         client,
         form,
@@ -591,11 +641,17 @@ export default function TVUnitBriefPage() {
           })),
       };
 
-      /*
-       * Identify this submission as a TV Unit brief.
-       * The unified /api/send-brief route uses this
-       * value to generate the correct PDF and document.
-       */
+      const completedData: SavedBrief = {
+        client,
+        form,
+        completed: true,
+        submitted: true,
+        completedAt,
+        savedAt: completedAt,
+      };
+
+      const formData =
+        new FormData();
 
       formData.append(
         "briefType",
@@ -607,20 +663,23 @@ export default function TVUnitBriefPage() {
         JSON.stringify(briefData)
       );
 
-      referenceImages.forEach((file) => {
-        formData.append(
-          "referenceImages",
-          file
-        );
-      });
-
-      const response = await fetch(
-        "/api/send-brief",
-        {
-          method: "POST",
-          body: formData,
+      referenceImages.forEach(
+        (file) => {
+          formData.append(
+            "referenceImages",
+            file
+          );
         }
       );
+
+      const response =
+        await fetch(
+          "/api/send-brief",
+          {
+            method: "POST",
+            body: formData,
+          }
+        );
 
       const contentType =
         response.headers.get(
@@ -661,10 +720,6 @@ export default function TVUnitBriefPage() {
         )
       );
 
-      setForm((previous) => ({
-        ...previous,
-      }));
-
       setSubmitMessage(
         "Your TV Unit brief has been submitted successfully."
       );
@@ -689,7 +744,7 @@ export default function TVUnitBriefPage() {
   if (!isLoaded) {
     return (
       <main className="flex min-h-screen items-center justify-center bg-[#f7f7f5]">
-        <div className="text-sm text-gray-500">
+        <div className="text-sm text-black/45">
           Loading client brief...
         </div>
       </main>
@@ -697,72 +752,91 @@ export default function TVUnitBriefPage() {
   }
 
   return (
-    <main className="min-h-screen bg-[#f7f7f5] text-gray-900">
+    <main className="min-h-screen bg-[#f7f7f5] text-black">
 
       {/* HEADER */}
 
-      <header className="sticky top-0 z-40 border-b border-gray-200 bg-white/95 backdrop-blur">
-        <div className="mx-auto flex h-20 max-w-7xl items-center justify-between px-5 sm:px-8">
+      <header className="sticky top-0 z-50 border-b border-black/10 bg-[#f7f7f5]/95 backdrop-blur-xl">
+        <div className="mx-auto flex h-[100px] max-w-[1400px] items-center justify-between px-5 md:px-8">
 
           <Link
-            href="/client-portal"
+            href="/"
             className="flex items-center"
           >
-            <Image
-              src="/kbx-logo.svg"
-              alt="KBX Spatial Atelier"
-              width={150}
-              height={45}
-              priority
-            />
+            <div className="relative h-[64px] w-[130px] shrink-0 sm:h-[70px] sm:w-[140px]">
+              <Image
+                src="/kbx-logo.svg"
+                alt="KBX Spatial Atelier"
+                fill
+                priority
+                sizes="140px"
+                className="object-contain object-left"
+              />
+            </div>
+
+            <div className="ml-2 hidden leading-none sm:block">
+              <p className="text-sm font-semibold tracking-tight">
+                KBX Spatial Atelier
+              </p>
+
+              <p className="mt-[6px] text-[10px] uppercase tracking-[0.2em] text-black/45">
+                TV Unit Brief
+              </p>
+            </div>
           </Link>
 
-          <div className="flex items-center gap-5">
+          <div className="flex items-center gap-3">
 
-            <span className="hidden text-sm text-gray-500 sm:block">
-              Client Brief
-            </span>
+            <div className="hidden text-right sm:block">
+              <p className="text-xs font-medium">
+                {client?.name ||
+                  form.clientName ||
+                  "Client"}
+              </p>
+
+              <p className="mt-1 text-[10px] text-black/40">
+                Auto-save enabled
+              </p>
+            </div>
 
             <Link
               href="/client-portal"
-              className="text-sm font-medium transition hover:text-[#910B0A]"
-              style={{ color: RED }}
+              className="rounded-full border border-black/10 bg-white px-4 py-2.5 text-sm font-medium transition hover:border-black/30"
             >
-              Back to Portal
+              ← Back
             </Link>
 
           </div>
-
         </div>
       </header>
 
       {/* INTRO */}
 
-      <section className="px-5 pb-10 pt-14 sm:px-8 sm:pt-20">
-        <div className="mx-auto max-w-4xl text-center">
+      <section className="px-5 pb-10 pt-12 md:px-8 md:pb-14 md:pt-20">
+        <div className="mx-auto max-w-[1000px]">
 
           <p
-            className="mb-4 text-xs font-bold uppercase tracking-[0.3em]"
+            className="text-xs font-semibold uppercase tracking-[0.2em]"
             style={{ color: RED }}
           >
-            Project Brief 04
+            TV Unit
           </p>
 
-          <h1 className="text-4xl font-semibold tracking-tight text-gray-950 sm:text-5xl">
-            TV Unit
+          <h1 className="mt-4 max-w-4xl text-4xl font-semibold tracking-[-0.04em] md:text-6xl">
+            Tell us exactly how your TV unit should work.
           </h1>
 
-          <p className="mx-auto mt-5 max-w-2xl text-base leading-7 text-gray-500">
-            Tell us about your television, storage needs,
-            electronics, preferred finishes and design
-            direction so we can develop the right TV unit
-            for your space.
+          <p className="mt-5 max-w-3xl text-sm leading-7 text-black/45 md:text-base">
+            This brief captures the TV, storage,
+            electronics, cable management, finishes
+            and design direction required for the
+            KBX Spatial Atelier design process.
           </p>
 
           {client && (
-            <div className="mt-6 inline-flex items-center rounded-full border border-gray-200 bg-white px-5 py-2.5 text-sm text-gray-600 shadow-sm">
-              Prepared for{" "}
-              <span className="ml-1 font-semibold text-gray-900">
+            <div className="mt-7 inline-flex rounded-full border border-black/10 bg-white px-4 py-2.5 text-xs text-black/60">
+              Prepared for
+              <span className="ml-1 font-semibold text-black">
                 {client.name}
               </span>
             </div>
@@ -771,282 +845,426 @@ export default function TVUnitBriefPage() {
         </div>
       </section>
 
+      {/* WHY THIS BRIEF IS IMPORTANT */}
+
+      <section className="px-5 pb-10 md:px-8">
+        <div className="mx-auto max-w-[1000px]">
+
+          <div className="rounded-3xl border border-[#910B0A]/10 bg-[#910B0A]/[0.035] p-6 md:p-7">
+
+            <p
+              className="text-xs font-semibold uppercase tracking-[0.18em]"
+              style={{ color: RED }}
+            >
+              Why this brief is important
+            </p>
+
+            <p className="mt-3 max-w-3xl text-sm leading-7 text-black/55">
+              A TV unit is more than a visual feature.
+              Its dimensions, storage, equipment,
+              cable routes, ventilation, mounting method
+              and finishes all affect the final design.
+              Accurate information at this stage helps
+              us develop a practical design before
+              fabrication begins.
+            </p>
+
+          </div>
+
+        </div>
+      </section>
+
+      {/* SECTION NAVIGATION */}
+
+      <div className="px-5 pb-10 md:px-8">
+        <div className="mx-auto max-w-[1000px]">
+
+          <div className="overflow-x-auto pb-2">
+            <div className="flex min-w-max items-center gap-2">
+
+              {sectionIds.map(
+                (_, index) => (
+                  <button
+                    key={index}
+                    type="button"
+                    onClick={() =>
+                      scrollToSection(
+                        index
+                      )
+                    }
+                    className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full border border-black/10 bg-white text-xs font-semibold transition hover:border-[#910B0A] hover:text-[#910B0A]"
+                    aria-label={`Go to section ${
+                      index + 1
+                    }`}
+                  >
+                    {index + 1}
+                  </button>
+                )
+              )}
+
+            </div>
+          </div>
+
+        </div>
+      </div>
+
+      {/* FORM */}
+
       <form
         onSubmit={handleSubmit}
-        className="mx-auto max-w-5xl space-y-7 px-5 pb-20 sm:px-8"
+        className="mx-auto max-w-[1000px] space-y-7 px-5 pb-20 md:px-8"
       >
 
-        {/* 01 PROJECT INFORMATION */}
+        {/* SECTION 01 */}
 
-        <section className="rounded-3xl border border-gray-200 bg-white p-6 shadow-sm sm:p-9">
+        <section
+          id="tv-unit-section-1"
+          className="scroll-mt-28 rounded-3xl border border-black/10 bg-white p-6 md:p-9"
+        >
 
           <SectionHeader
             number="01"
             title="PROJECT INFORMATION"
+            description="Provide the basic information needed to identify and prepare this TV unit project."
+            required
           />
 
-          <div className="grid gap-6 md:grid-cols-2">
+          <div className="mt-7 space-y-5">
 
-            <TextInput
-              label="Project Name"
-              value={form.projectName}
+            <Question
+              number="1"
+              title="Project Details"
+            >
+              <div className="grid gap-6 md:grid-cols-2">
+
+                <TextInput
+                  label="Project Name"
+                  value={
+                    form.projectName
+                  }
+                  required
+                  onChange={(value) =>
+                    updateField(
+                      "projectName",
+                      value
+                    )
+                  }
+                />
+
+                <TextInput
+                  label="Client Name"
+                  value={
+                    form.clientName
+                  }
+                  required
+                  onChange={(value) =>
+                    updateField(
+                      "clientName",
+                      value
+                    )
+                  }
+                />
+
+                <TextInput
+                  label="Project Location"
+                  value={
+                    form.projectLocation
+                  }
+                  required
+                  onChange={(value) =>
+                    updateField(
+                      "projectLocation",
+                      value
+                    )
+                  }
+                />
+
+                <TextInput
+                  label="Date"
+                  type="date"
+                  value={form.date}
+                  required
+                  onChange={(value) =>
+                    updateField(
+                      "date",
+                      value
+                    )
+                  }
+                />
+
+              </div>
+            </Question>
+
+            <Question
+              number="2"
+              title="Project Type"
               required
-              onChange={(value) =>
-                updateField(
-                  "projectName",
-                  value
-                )
-              }
-            />
-
-            <TextInput
-              label="Client Name"
-              value={form.clientName}
-              required
-              onChange={(value) =>
-                updateField(
-                  "clientName",
-                  value
-                )
-              }
-            />
-
-            <TextInput
-              label="Project Location"
-              value={
-                form.projectLocation
-              }
-              required
-              onChange={(value) =>
-                updateField(
-                  "projectLocation",
-                  value
-                )
-              }
-            />
-
-            <TextInput
-              label="Date"
-              type="date"
-              value={form.date}
-              required
-              onChange={(value) =>
-                updateField(
-                  "date",
-                  value
-                )
-              }
-            />
-
-          </div>
-
-          <div className="mt-7">
-            <CheckboxGroup
-              label="Project Type"
-              options={[
-                "New TV Unit",
-                "Replacement of existing TV Unit",
-                "Modification of existing unit",
-                "Other",
-              ]}
-              selected={
-                form.projectType
-              }
-              onChange={(values) =>
-                updateField(
-                  "projectType",
-                  values
-                )
-              }
-            />
-          </div>
-
-          {form.projectType.includes(
-            "Other"
-          ) && (
-            <div className="mt-6">
-              <TextInput
-                label="Other Project Type"
-                value={
-                  form.projectTypeOther
+            >
+              <CheckboxGroup
+                options={[
+                  "New TV Unit",
+                  "Replacement of existing TV Unit",
+                  "Modification of existing unit",
+                  "Other",
+                ]}
+                values={
+                  form.projectType
                 }
-                onChange={(value) =>
+                onChange={(values) =>
                   updateField(
-                    "projectTypeOther",
-                    value
+                    "projectType",
+                    values
                   )
                 }
               />
-            </div>
-          )}
 
+              {form.projectType.includes(
+                "Other"
+              ) && (
+                <div className="mt-5">
+                  <TextInput
+                    label="Other Project Type"
+                    value={
+                      form.projectTypeOther
+                    }
+                    onChange={(value) =>
+                      updateField(
+                        "projectTypeOther",
+                        value
+                      )
+                    }
+                  />
+                </div>
+              )}
+            </Question>
+
+          </div>
         </section>
 
-        {/* 02 GENERAL DESIGN REQUIREMENTS */}
+        {/* SECTION 02 */}
 
-        <section className="rounded-3xl border border-gray-200 bg-white p-6 shadow-sm sm:p-9">
+        <section
+          id="tv-unit-section-2"
+          className="scroll-mt-28 rounded-3xl border border-black/10 bg-white p-6 md:p-9"
+        >
 
           <SectionHeader
             number="02"
             title="GENERAL DESIGN REQUIREMENTS"
+            description="Tell us what the client wants the TV unit to achieve and the overall visual direction."
+            required
           />
 
-          <div className="space-y-7">
+          <div className="mt-7 space-y-5">
 
-            <TextArea
-              label="What does the client want to achieve?"
-              value={form.designGoal}
+            <Question
+              number="1"
+              title="Design Goal"
+              description="Describe the overall purpose, look or experience the client wants from the TV unit."
               required
-              placeholder="Describe the overall purpose, look or experience the client wants from the TV unit."
-              onChange={(value) =>
-                updateField(
-                  "designGoal",
-                  value
-                )
-              }
-            />
-
-            <CheckboxGroup
-              label="Preferred Design Style"
-              options={[
-                "Modern",
-                "Contemporary",
-                "Minimalist",
-                "Luxury",
-                "Classic",
-                "Other",
-              ]}
-              selected={
-                form.designStyles
-              }
-              onChange={(values) =>
-                updateField(
-                  "designStyles",
-                  values
-                )
-              }
-            />
-
-            {form.designStyles.includes(
-              "Other"
-            ) && (
-              <TextInput
-                label="Other Design Style"
+            >
+              <TextArea
+                label="What does the client want to achieve?"
                 value={
-                  form.designStyleOther
+                  form.designGoal
                 }
+                required
+                placeholder="e.g. A clean luxury TV wall with concealed storage and minimal visible electronics."
                 onChange={(value) =>
                   updateField(
-                    "designStyleOther",
+                    "designGoal",
                     value
                   )
                 }
               />
-            )}
+            </Question>
 
-            <RadioGroup
-              label="Are client reference images available?"
-              options={[
-                "Yes",
-                "No",
-              ]}
-              value={
-                form.referenceImagesAvailable
-              }
-              onChange={(value) =>
-                updateField(
-                  "referenceImagesAvailable",
-                  value
-                )
-              }
-            />
+            <Question
+              number="2"
+              title="Main Requirements"
+              description="Mention any important requirements that should guide the design."
+              required
+            >
+              <TextArea
+                label="Main Requirements"
+                value={
+                  form.mainRequirements
+                }
+                required
+                placeholder="Describe the client's main expectations for the TV unit."
+                onChange={(value) =>
+                  updateField(
+                    "mainRequirements",
+                    value
+                  )
+                }
+              />
+            </Question>
 
-            {form.referenceImagesAvailable ===
-              "Yes" && (
-              <div className="rounded-2xl border border-dashed border-gray-300 bg-gray-50 p-6">
+            <Question
+              number="3"
+              title="Preferred Design Style"
+            >
+              <CheckboxGroup
+                options={[
+                  "Modern",
+                  "Contemporary",
+                  "Minimalist",
+                  "Luxury",
+                  "Classic",
+                  "Industrial",
+                  "Other",
+                ]}
+                values={
+                  form.designStyles
+                }
+                onChange={(values) =>
+                  updateField(
+                    "designStyles",
+                    values
+                  )
+                }
+              />
 
-                <label className="mb-2 block text-sm font-semibold text-gray-800">
-                  Attach Reference Images
-                </label>
-
-                <p className="mb-4 text-sm leading-6 text-gray-500">
-                  Upload images that communicate the
-                  client&apos;s preferred style, layout,
-                  finishes or details.
-                </p>
-
-                <input
-                  type="file"
-                  accept="image/png,image/jpeg,image/jpg,image/webp"
-                  multiple
-                  onChange={
-                    handleReferenceImages
-                  }
-                  className="block w-full text-sm text-gray-600 file:mr-4 file:rounded-lg file:border-0 file:bg-[#910B0A] file:px-4 file:py-2.5 file:text-sm file:font-medium file:text-white hover:file:opacity-90"
-                />
-
-                {referenceImages.length >
-                  0 && (
-                  <div className="mt-4 space-y-2">
-
-                    {referenceImages.map(
-                      (
-                        file,
-                        index
-                      ) => (
-                        <div
-                          key={`${file.name}-${index}`}
-                          className="rounded-lg bg-white px-4 py-2 text-sm text-gray-600"
-                        >
-                          {file.name}
-                        </div>
+              {form.designStyles.includes(
+                "Other"
+              ) && (
+                <div className="mt-5">
+                  <TextInput
+                    label="Other Design Style"
+                    value={
+                      form.designStyleOther
+                    }
+                    onChange={(value) =>
+                      updateField(
+                        "designStyleOther",
+                        value
                       )
-                    )}
+                    }
+                  />
+                </div>
+              )}
+            </Question>
 
-                  </div>
-                )}
+            <Question
+              number="4"
+              title="Reference Images"
+              description="Reference images help communicate preferred layouts, materials, proportions and details."
+            >
+              <RadioGroup
+                options={[
+                  "Yes",
+                  "No",
+                ]}
+                value={
+                  form.referenceImagesAvailable
+                }
+                onChange={(value) =>
+                  updateField(
+                    "referenceImagesAvailable",
+                    value
+                  )
+                }
+              />
 
-              </div>
-            )}
+              {form.referenceImagesAvailable ===
+                "Yes" && (
+                <div className="mt-5 rounded-2xl border border-dashed border-black/15 bg-white p-5">
+
+                  <label className="mb-2 block text-sm font-semibold">
+                    Attach Reference Images
+                  </label>
+
+                  <p className="mb-4 text-xs leading-5 text-black/40">
+                    Upload images that communicate
+                    the client&apos;s preferred
+                    style, layout, finishes or
+                    details.
+                  </p>
+
+                  <input
+                    type="file"
+                    accept="image/png,image/jpeg,image/jpg,image/webp"
+                    multiple
+                    onChange={
+                      handleReferenceImages
+                    }
+                    className="block w-full text-sm text-black/60 file:mr-4 file:rounded-lg file:border-0 file:bg-[#910B0A] file:px-4 file:py-2.5 file:text-sm file:font-medium file:text-white hover:file:opacity-90"
+                  />
+
+                  {referenceImages.length >
+                    0 && (
+                    <div className="mt-4 space-y-2">
+
+                      {referenceImages.map(
+                        (
+                          file,
+                          index
+                        ) => (
+                          <div
+                            key={`${file.name}-${index}`}
+                            className="rounded-xl border border-black/10 bg-[#fafaf8] px-4 py-3 text-xs text-black/60"
+                          >
+                            {file.name}
+                          </div>
+                        )
+                      )}
+
+                    </div>
+                  )}
+
+                </div>
+              )}
+            </Question>
 
           </div>
-
         </section>
 
-        {/* 03 TV REQUIREMENTS */}
+        {/* SECTION 03 */}
 
-        <section className="rounded-3xl border border-gray-200 bg-white p-6 shadow-sm sm:p-9">
+        <section
+          id="tv-unit-section-3"
+          className="scroll-mt-28 rounded-3xl border border-black/10 bg-white p-6 md:p-9"
+        >
 
           <SectionHeader
             number="03"
             title="TV REQUIREMENTS"
+            description="Capture the TV dimensions, mounting method and any information required to size the unit correctly."
+            required
           />
 
-          <div className="space-y-7">
+          <div className="mt-7 space-y-5">
 
-            <RadioGroup
-              label="Does the client already have the TV?"
-              options={[
-                "Yes",
-                "No",
-              ]}
-              value={form.hasTV}
-              onChange={(value) =>
-                updateField(
-                  "hasTV",
-                  value
-                )
-              }
-            />
+            <Question
+              number="1"
+              title="Existing TV"
+              required
+            >
+              <RadioGroup
+                options={[
+                  "Yes",
+                  "No",
+                ]}
+                value={
+                  form.hasTV
+                }
+                onChange={(value) =>
+                  updateField(
+                    "hasTV",
+                    value
+                  )
+                }
+              />
+            </Question>
 
             {form.hasTV ===
               "Yes" && (
-              <div className="rounded-2xl bg-gray-50 p-5 sm:p-6">
-
-                <h3 className="mb-5 text-sm font-semibold text-gray-900">
-                  Existing TV Information
-                </h3>
-
+              <Question
+                number="2"
+                title="Existing TV Information"
+                description="Use actual manufacturer dimensions where possible."
+              >
                 <div className="grid gap-6 md:grid-cols-2">
 
                   <TextInput
@@ -1064,7 +1282,9 @@ export default function TVUnitBriefPage() {
 
                   <TextInput
                     label="TV Width (cm)"
-                    value={form.tvWidth}
+                    value={
+                      form.tvWidth
+                    }
                     type="number"
                     onChange={(value) =>
                       updateField(
@@ -1076,7 +1296,9 @@ export default function TVUnitBriefPage() {
 
                   <TextInput
                     label="TV Height (cm)"
-                    value={form.tvHeight}
+                    value={
+                      form.tvHeight
+                    }
                     type="number"
                     onChange={(value) =>
                       updateField(
@@ -1088,7 +1310,9 @@ export default function TVUnitBriefPage() {
 
                   <TextInput
                     label="TV Depth (cm)"
-                    value={form.tvDepth}
+                    value={
+                      form.tvDepth
+                    }
                     type="number"
                     onChange={(value) =>
                       updateField(
@@ -1099,404 +1323,476 @@ export default function TVUnitBriefPage() {
                   />
 
                 </div>
-
-              </div>
+              </Question>
             )}
 
             {form.hasTV ===
               "No" && (
-              <TextInput
-                label="Preferred TV Size (inches)"
+              <Question
+                number="2"
+                title="Preferred TV Size"
+              >
+                <TextInput
+                  label="Preferred TV Size (inches)"
+                  value={
+                    form.preferredTVSize
+                  }
+                  placeholder="e.g. 55, 65, 75"
+                  onChange={(value) =>
+                    updateField(
+                      "preferredTVSize",
+                      value
+                    )
+                  }
+                />
+              </Question>
+            )}
+
+            <Question
+              number="3"
+              title="TV Installation"
+              required
+            >
+              <RadioGroup
+                options={[
+                  "Wall mounted",
+                  "Sitting on cabinet",
+                  "Undecided",
+                ]}
                 value={
-                  form.preferredTVSize
+                  form.tvInstallation
                 }
-                placeholder="e.g. 55, 65, 75"
                 onChange={(value) =>
                   updateField(
-                    "preferredTVSize",
+                    "tvInstallation",
                     value
                   )
                 }
               />
-            )}
-
-            <RadioGroup
-              label="TV Installation"
-              options={[
-                "Wall mounted",
-                "Sitting on cabinet",
-                "Undecided",
-              ]}
-              value={
-                form.tvInstallation
-              }
-              onChange={(value) =>
-                updateField(
-                  "tvInstallation",
-                  value
-                )
-              }
-            />
+            </Question>
 
           </div>
-
         </section>
 
-        {/* 04 STORAGE REQUIREMENTS */}
+        {/* SECTION 04 */}
 
-        <section className="rounded-3xl border border-gray-200 bg-white p-6 shadow-sm sm:p-9">
+        <section
+          id="tv-unit-section-4"
+          className="scroll-mt-28 rounded-3xl border border-black/10 bg-white p-6 md:p-9"
+        >
 
           <SectionHeader
             number="04"
             title="STORAGE REQUIREMENTS"
+            description="Define what storage the TV unit needs to provide and what will be stored inside it."
           />
 
-          <div className="space-y-7">
+          <div className="mt-7 space-y-5">
 
-            <RadioGroup
-              label="Does the client want storage?"
-              options={[
-                "Yes",
-                "No",
-              ]}
-              value={
-                form.storageRequired
-              }
-              onChange={(value) =>
-                updateField(
-                  "storageRequired",
-                  value
-                )
-              }
-            />
+            <Question
+              number="1"
+              title="Storage Required"
+            >
+              <RadioGroup
+                options={[
+                  "Yes",
+                  "No",
+                ]}
+                value={
+                  form.storageRequired
+                }
+                onChange={(value) =>
+                  updateField(
+                    "storageRequired",
+                    value
+                  )
+                }
+              />
+            </Question>
 
             {form.storageRequired ===
               "Yes" && (
               <>
-                <CheckboxGroup
-                  label="Required Storage"
-                  options={[
-                    "Drawers",
-                    "Closed cabinets",
-                    "Open shelves",
-                    "Display shelves",
-                    "Glass cabinets",
-                    "Floating cabinets",
-                    "Other",
-                  ]}
-                  selected={
-                    form.storageTypes
-                  }
-                  onChange={(values) =>
-                    updateField(
-                      "storageTypes",
-                      values
-                    )
-                  }
-                />
-
-                {form.storageTypes.includes(
-                  "Other"
-                ) && (
-                  <TextInput
-                    label="Other Storage Requirement"
-                    value={
-                      form.storageOther
+                <Question
+                  number="2"
+                  title="Required Storage"
+                >
+                  <CheckboxGroup
+                    options={[
+                      "Drawers",
+                      "Closed cabinets",
+                      "Open shelves",
+                      "Display shelves",
+                      "Glass cabinets",
+                      "Floating cabinets",
+                      "Other",
+                    ]}
+                    values={
+                      form.storageTypes
                     }
-                    onChange={(value) =>
+                    onChange={(values) =>
                       updateField(
-                        "storageOther",
-                        value
+                        "storageTypes",
+                        values
                       )
                     }
                   />
-                )}
 
-                <CheckboxGroup
-                  label="What will be stored?"
-                  options={[
-                    "Decoder",
-                    "Game console",
-                    "Speakers",
-                    "Books",
-                    "Decorations",
-                    "DVDs/media",
-                    "Remote controls",
-                    "Other",
-                  ]}
-                  selected={
-                    form.storageItems
-                  }
-                  onChange={(values) =>
-                    updateField(
-                      "storageItems",
-                      values
-                    )
-                  }
-                />
+                  {form.storageTypes.includes(
+                    "Other"
+                  ) && (
+                    <div className="mt-5">
+                      <TextInput
+                        label="Other Storage Requirement"
+                        value={
+                          form.storageOther
+                        }
+                        onChange={(value) =>
+                          updateField(
+                            "storageOther",
+                            value
+                          )
+                        }
+                      />
+                    </div>
+                  )}
+                </Question>
 
-                {form.storageItems.includes(
-                  "Other"
-                ) && (
-                  <TextInput
-                    label="Other Items to be Stored"
-                    value={
-                      form.storageItemsOther
+                <Question
+                  number="3"
+                  title="Items to be Stored"
+                >
+                  <CheckboxGroup
+                    options={[
+                      "Decoder",
+                      "Game console",
+                      "Speakers",
+                      "Books",
+                      "Decorations",
+                      "DVDs/media",
+                      "Remote controls",
+                      "Other",
+                    ]}
+                    values={
+                      form.storageItems
                     }
-                    onChange={(value) =>
+                    onChange={(values) =>
                       updateField(
-                        "storageItemsOther",
-                        value
+                        "storageItems",
+                        values
                       )
                     }
                   />
-                )}
 
+                  {form.storageItems.includes(
+                    "Other"
+                  ) && (
+                    <div className="mt-5">
+                      <TextInput
+                        label="Other Items to be Stored"
+                        value={
+                          form.storageItemsOther
+                        }
+                        onChange={(value) =>
+                          updateField(
+                            "storageItemsOther",
+                            value
+                          )
+                        }
+                      />
+                    </div>
+                  )}
+                </Question>
               </>
             )}
 
           </div>
-
         </section>
 
-        {/* 05 ELECTRONICS & CABLE MANAGEMENT */}
+        {/* SECTION 05 */}
 
-        <section className="rounded-3xl border border-gray-200 bg-white p-6 shadow-sm sm:p-9">
+        <section
+          id="tv-unit-section-5"
+          className="scroll-mt-28 rounded-3xl border border-black/10 bg-white p-6 md:p-9"
+        >
 
           <SectionHeader
             number="05"
             title="ELECTRONICS & CABLE MANAGEMENT"
+            description="Identify the equipment that needs to be accommodated and how it should function within the unit."
           />
 
-          <div className="space-y-7">
+          <div className="mt-7 space-y-5">
 
-            <CheckboxGroup
-              label="Equipment to be accommodated"
-              options={[
-                "Decoder",
-                "PlayStation/Xbox",
-                "Soundbar",
-                "AV receiver",
-                "Speakers",
-                "Subwoofer",
-                "Wi-Fi router",
-                "Other",
-              ]}
-              selected={
-                form.equipment
-              }
-              onChange={(values) =>
-                updateField(
-                  "equipment",
-                  values
-                )
-              }
-            />
+            <Question
+              number="1"
+              title="Equipment to be Accommodated"
+            >
+              <CheckboxGroup
+                options={[
+                  "Decoder",
+                  "PlayStation/Xbox",
+                  "Soundbar",
+                  "AV receiver",
+                  "Speakers",
+                  "Subwoofer",
+                  "Wi-Fi router",
+                  "Other",
+                ]}
+                values={
+                  form.equipment
+                }
+                onChange={(values) =>
+                  updateField(
+                    "equipment",
+                    values
+                  )
+                }
+              />
 
-            {form.equipment.includes(
-              "Other"
-            ) && (
-              <TextInput
-                label="Other Equipment"
+              {form.equipment.includes(
+                "Other"
+              ) && (
+                <div className="mt-5">
+                  <TextInput
+                    label="Other Equipment"
+                    value={
+                      form.equipmentOther
+                    }
+                    onChange={(value) =>
+                      updateField(
+                        "equipmentOther",
+                        value
+                      )
+                    }
+                  />
+                </div>
+              )}
+            </Question>
+
+            <Question
+              number="2"
+              title="Cable Management"
+            >
+              <RadioGroup
+                options={[
+                  "Yes",
+                  "No",
+                ]}
                 value={
-                  form.equipmentOther
+                  form.cableManagement
                 }
                 onChange={(value) =>
                   updateField(
-                    "equipmentOther",
+                    "cableManagement",
                     value
                   )
                 }
               />
-            )}
+            </Question>
 
-            <RadioGroup
-              label="Cable management required?"
-              options={[
-                "Yes",
-                "No",
-              ]}
-              value={
-                form.cableManagement
-              }
-              onChange={(value) =>
-                updateField(
-                  "cableManagement",
-                  value
-                )
-              }
-            />
+            <Question
+              number="3"
+              title="Equipment Visibility"
+            >
+              <RadioGroup
+                options={[
+                  "Visible",
+                  "Concealed",
+                  "Combination",
+                ]}
+                value={
+                  form.equipmentVisibility
+                }
+                onChange={(value) =>
+                  updateField(
+                    "equipmentVisibility",
+                    value
+                  )
+                }
+              />
+            </Question>
 
-            <RadioGroup
-              label="Equipment should be"
-              options={[
-                "Visible",
-                "Concealed",
-                "Combination",
-              ]}
-              value={
-                form.equipmentVisibility
-              }
-              onChange={(value) =>
-                updateField(
-                  "equipmentVisibility",
-                  value
-                )
-              }
-            />
-
-            <TextArea
-              label="Special Requirements"
-              value={
-                form.electronicsSpecialRequirements
-              }
-              placeholder="Mention ventilation, access, sockets, cable routes or any other electronics-related requirements."
-              onChange={(value) =>
-                updateField(
-                  "electronicsSpecialRequirements",
-                  value
-                )
-              }
-            />
+            <Question
+              number="4"
+              title="Electronics Special Requirements"
+            >
+              <TextArea
+                label="Special Requirements"
+                value={
+                  form.electronicsSpecialRequirements
+                }
+                placeholder="Mention ventilation, access, sockets, cable routes or any other electronics-related requirements."
+                onChange={(value) =>
+                  updateField(
+                    "electronicsSpecialRequirements",
+                    value
+                  )
+                }
+              />
+            </Question>
 
           </div>
-
         </section>
 
-        {/* 06 DESIGN FEATURES */}
+        {/* SECTION 06 */}
 
-        <section className="rounded-3xl border border-gray-200 bg-white p-6 shadow-sm sm:p-9">
+        <section
+          id="tv-unit-section-6"
+          className="scroll-mt-28 rounded-3xl border border-black/10 bg-white p-6 md:p-9"
+        >
 
           <SectionHeader
             number="06"
-            title="DESIGN FEATURES"
+            title="DESIGN FEATURES & FINISHES"
+            description="Select the architectural, decorative and material features that should influence the final TV unit."
           />
 
-          <div className="space-y-7">
+          <div className="mt-7 space-y-5">
 
-            <CheckboxGroup
-              label="Does the client want"
-              options={[
-                "Back panel behind TV",
-                "Wall cladding",
-                "Fluted panel",
-                "Wood finish",
-                "Marble/stone effect",
-                "Mirror",
-                "Glass",
-                "Open shelving",
-                "Floating cabinet",
-                "LED strip lighting",
-                "Display lighting",
-                "Other",
-              ]}
-              selected={
-                form.designFeatures
-              }
-              onChange={(values) =>
-                updateField(
-                  "designFeatures",
-                  values
-                )
-              }
-            />
+            <Question
+              number="1"
+              title="Design Features"
+            >
+              <CheckboxGroup
+                options={[
+                  "Back panel behind TV",
+                  "Wall cladding",
+                  "Fluted panel",
+                  "Wood finish",
+                  "Marble/stone effect",
+                  "Mirror",
+                  "Glass",
+                  "Open shelving",
+                  "Floating cabinet",
+                  "LED strip lighting",
+                  "Display lighting",
+                  "Other",
+                ]}
+                values={
+                  form.designFeatures
+                }
+                onChange={(values) =>
+                  updateField(
+                    "designFeatures",
+                    values
+                  )
+                }
+              />
 
-            {form.designFeatures.includes(
-              "Other"
-            ) && (
-              <TextInput
-                label="Other Design Feature"
+              {form.designFeatures.includes(
+                "Other"
+              ) && (
+                <div className="mt-5">
+                  <TextInput
+                    label="Other Design Feature"
+                    value={
+                      form.designFeatureOther
+                    }
+                    onChange={(value) =>
+                      updateField(
+                        "designFeatureOther",
+                        value
+                      )
+                    }
+                  />
+                </div>
+              )}
+            </Question>
+
+            <Question
+              number="2"
+              title="Wall Cladding / Paneling"
+            >
+              <RadioGroup
+                options={[
+                  "Yes",
+                  "No",
+                ]}
                 value={
-                  form.designFeatureOther
+                  form.wallCladdingRequired
                 }
                 onChange={(value) =>
                   updateField(
-                    "designFeatureOther",
+                    "wallCladdingRequired",
                     value
                   )
                 }
               />
-            )}
 
-            <RadioGroup
-              label="Does the client want wall cladding / paneling behind the TV?"
-              options={[
-                "Yes",
-                "No",
-              ]}
-              value={
-                form.wallCladdingRequired
-              }
-              onChange={(value) =>
-                updateField(
-                  "wallCladdingRequired",
-                  value
-                )
-              }
-            />
+              {form.wallCladdingRequired ===
+                "Yes" && (
+                <div className="mt-5">
+                  <TextArea
+                    label="Preferred Material"
+                    value={
+                      form.wallCladdingMaterial
+                    }
+                    placeholder="e.g. wood slats, veneer, stone, marble effect, fluted panels, laminate, etc."
+                    onChange={(value) =>
+                      updateField(
+                        "wallCladdingMaterial",
+                        value
+                      )
+                    }
+                  />
+                </div>
+              )}
+            </Question>
 
-            {form.wallCladdingRequired ===
-              "Yes" && (
-              <TextArea
-                label="Preferred Material"
-                value={
-                  form.wallCladdingMaterial
+            <Question
+              number="3"
+              title="Main Finish"
+            >
+              <CheckboxGroup
+                options={[
+                  "Matte",
+                  "Gloss",
+                  "Wood grain",
+                  "Veneer",
+                  "Laminate",
+                  "Other",
+                ]}
+                values={
+                  form.mainFinish
                 }
-                placeholder="e.g. wood slats, veneer, stone, marble effect, fluted panels, laminate, etc."
-                onChange={(value) =>
+                onChange={(values) =>
                   updateField(
-                    "wallCladdingMaterial",
-                    value
+                    "mainFinish",
+                    values
                   )
                 }
               />
-            )}
 
-            <CheckboxGroup
-              label="Main Finish"
-              options={[
-                "Matte",
-                "Gloss",
-                "Wood grain",
-                "Veneer",
-                "Laminate",
-                "Other",
-              ]}
-              selected={
-                form.mainFinish
-              }
-              onChange={(values) =>
-                updateField(
-                  "mainFinish",
-                  values
-                )
-              }
-            />
-
-            {form.mainFinish.includes(
-              "Other"
-            ) && (
-              <TextInput
-                label="Other Main Finish"
-                value={
-                  form.mainFinishOther
-                }
-                onChange={(value) =>
-                  updateField(
-                    "mainFinishOther",
-                    value
-                  )
-                }
-              />
-            )}
+              {form.mainFinish.includes(
+                "Other"
+              ) && (
+                <div className="mt-5">
+                  <TextInput
+                    label="Other Main Finish"
+                    value={
+                      form.mainFinishOther
+                    }
+                    onChange={(value) =>
+                      updateField(
+                        "mainFinishOther",
+                        value
+                      )
+                    }
+                  />
+                </div>
+              )}
+            </Question>
 
           </div>
-
         </section>
 
-        {/* 07 DO NOT WANT */}
+        {/* SECTION 07 */}
 
-        <section className="rounded-3xl border border-gray-200 bg-white p-6 shadow-sm sm:p-9">
+        <section
+          id="tv-unit-section-7"
+          className="scroll-mt-28 rounded-3xl border border-black/10 bg-white p-6 md:p-9"
+        >
 
           <SectionHeader
             number="07"
@@ -1504,164 +1800,165 @@ export default function TVUnitBriefPage() {
             description="Select anything the client specifically does not want included in the TV unit design."
           />
 
-          <div className="space-y-6">
+          <div className="mt-7">
 
-            <CheckboxGroup
-              label="Client does NOT want"
-              options={[
-                "Wall cladding",
-                "Open shelves",
-                "Glass",
-                "Floating cabinets",
-                "LED lighting",
-                "Handles",
-                "Dark colours",
-                "Light colours",
-                "Visible equipment",
-                "Other",
-              ]}
-              selected={
-                form.doNotWant
-              }
-              onChange={(values) =>
-                updateField(
-                  "doNotWant",
-                  values
-                )
-              }
-            />
-
-            {form.doNotWant.includes(
-              "Other"
-            ) && (
-              <TextInput
-                label="Other"
-                value={
-                  form.doNotWantOther
+            <Question
+              number="1"
+              title="Client Does Not Want"
+            >
+              <CheckboxGroup
+                options={[
+                  "Wall cladding",
+                  "Open shelves",
+                  "Glass",
+                  "Floating cabinets",
+                  "LED lighting",
+                  "Handles",
+                  "Dark colours",
+                  "Light colours",
+                  "Visible equipment",
+                  "Other",
+                ]}
+                values={
+                  form.doNotWant
                 }
-                onChange={(value) =>
+                onChange={(values) =>
                   updateField(
-                    "doNotWantOther",
-                    value
+                    "doNotWant",
+                    values
                   )
                 }
               />
-            )}
+
+              {form.doNotWant.includes(
+                "Other"
+              ) && (
+                <div className="mt-5">
+                  <TextInput
+                    label="Other"
+                    value={
+                      form.doNotWantOther
+                    }
+                    onChange={(value) =>
+                      updateField(
+                        "doNotWantOther",
+                        value
+                      )
+                    }
+                  />
+                </div>
+              )}
+            </Question>
 
           </div>
-
         </section>
 
-        {/* 08 FINAL CONFIRMATION */}
+        {/* SECTION 08 */}
 
-        <section className="rounded-3xl border border-gray-200 bg-white p-6 shadow-sm sm:p-9">
+        <section
+          id="tv-unit-section-8"
+          className="scroll-mt-28 rounded-3xl border border-black/10 bg-white p-6 md:p-9"
+        >
 
           <SectionHeader
             number="08"
             title="FINAL CONFIRMATION"
-            description="Please review the complete brief before submitting."
+            description="Review the complete brief before submitting it to KBX Spatial Atelier."
+            required
           />
 
-          <div className="space-y-6">
+          <div className="mt-7 space-y-5">
 
-            {/* COMPULSORY CONFIRMATION 1 */}
-
-            <label
-              className={`flex cursor-pointer items-start gap-4 rounded-2xl border p-5 transition ${
-                form.informationChecked
-                  ? "border-[#910B0A] bg-[#910B0A]/5"
-                  : "border-gray-200 bg-gray-50 hover:border-gray-300"
-              }`}
+            <Question
+              number="1"
+              title="Information Checked"
+              required
             >
-
-              <input
-                type="checkbox"
-                checked={
+              <label
+                className={`flex cursor-pointer items-start gap-4 rounded-2xl border p-5 transition ${
                   form.informationChecked
-                }
-                onChange={(event) =>
-                  updateField(
-                    "informationChecked",
-                    event.target.checked
-                  )
-                }
-                className="mt-1 h-5 w-5 shrink-0 rounded"
-                style={{
-                  accentColor: RED,
-                }}
-              />
+                    ? "border-[#910B0A] bg-[#910B0A]/5"
+                    : "border-black/10 bg-white hover:border-black/25"
+                }`}
+              >
+                <input
+                  type="checkbox"
+                  checked={
+                    form.informationChecked
+                  }
+                  onChange={(event) =>
+                    updateField(
+                      "informationChecked",
+                      event.target.checked
+                    )
+                  }
+                  className="mt-1 h-5 w-5 shrink-0 rounded"
+                  style={{
+                    accentColor: RED,
+                  }}
+                />
 
-              <span className="text-sm leading-6 text-gray-700">
-                I confirm that the information provided
-                above has been checked and represents the
-                client&apos;s current requirements and the
-                measured site conditions.
+                <span className="text-sm leading-6 text-black/70">
+                  I confirm that the information
+                  provided above has been checked
+                  and represents the client&apos;s
+                  current requirements and the
+                  available site information.
 
-                <span className="ml-1 font-semibold text-[#910B0A]">
-                  *
+                  <span className="ml-1 font-semibold text-[#910B0A]">
+                    *
+                  </span>
                 </span>
-              </span>
+              </label>
+            </Question>
 
-            </label>
-
-            {/* COMPULSORY CONFIRMATION 2 */}
-
-            <label
-              className={`flex cursor-pointer items-start gap-4 rounded-2xl border p-5 transition ${
-                form.clientRequirementsConfirmed
-                  ? "border-[#910B0A] bg-[#910B0A]/5"
-                  : "border-gray-200 bg-gray-50 hover:border-gray-300"
-              }`}
+            <Question
+              number="2"
+              title="Client Requirements Confirmed"
+              required
             >
-
-              <input
-                type="checkbox"
-                checked={
+              <label
+                className={`flex cursor-pointer items-start gap-4 rounded-2xl border p-5 transition ${
                   form.clientRequirementsConfirmed
-                }
-                onChange={(event) =>
-                  updateField(
-                    "clientRequirementsConfirmed",
-                    event.target.checked
-                  )
-                }
-                className="mt-1 h-5 w-5 shrink-0 rounded"
-                style={{
-                  accentColor: RED,
-                }}
-              />
+                    ? "border-[#910B0A] bg-[#910B0A]/5"
+                    : "border-black/10 bg-white hover:border-black/25"
+                }`}
+              >
+                <input
+                  type="checkbox"
+                  checked={
+                    form.clientRequirementsConfirmed
+                  }
+                  onChange={(event) =>
+                    updateField(
+                      "clientRequirementsConfirmed",
+                      event.target.checked
+                    )
+                  }
+                  className="mt-1 h-5 w-5 shrink-0 rounded"
+                  style={{
+                    accentColor: RED,
+                  }}
+                />
 
-              <span className="text-sm leading-6 text-gray-700">
-                I confirm that the client&apos;s
-                requirements have been accurately recorded
-                in this brief.
+                <span className="text-sm leading-6 text-black/70">
+                  I confirm that the client&apos;s
+                  requirements have been accurately
+                  recorded in this brief.
 
-                <span className="ml-1 font-semibold text-[#910B0A]">
-                  *
+                  <span className="ml-1 font-semibold text-[#910B0A]">
+                    *
+                  </span>
                 </span>
-              </span>
+              </label>
+            </Question>
 
-            </label>
-
-            <div className="grid gap-6 md:grid-cols-2">
-
-              <TextInput
-                label="Prepared By"
-                value={
-                  form.clientSignature
-                }
-                required
-                placeholder="Name of person preparing the brief"
-                onChange={(value) =>
-                  updateField(
-                    "clientSignature",
-                    value
-                  )
-                }
-              />
-
+            <Question
+              number="3"
+              title="Design Readiness"
+              required
+            >
               <RadioGroup
-                label="Ready for Design"
                 options={[
                   "Yes",
                   "No",
@@ -1676,23 +1973,45 @@ export default function TVUnitBriefPage() {
                   )
                 }
               />
+            </Question>
 
-            </div>
+            <Question
+              number="4"
+              title="Prepared By"
+              required
+            >
+              <TextInput
+                label="Name of Person Preparing the Brief"
+                value={
+                  form.clientSignature
+                }
+                required
+                placeholder="Enter full name"
+                onChange={(value) =>
+                  updateField(
+                    "clientSignature",
+                    value
+                  )
+                }
+              />
+            </Question>
 
-            <div className="rounded-2xl border border-gray-200 bg-gray-50 p-5">
+            <div className="rounded-2xl border border-[#910B0A]/10 bg-[#910B0A]/[0.035] p-5">
 
-              <p className="text-xs leading-6 text-gray-500">
-                <span className="font-semibold text-gray-700">
+              <p className="text-xs leading-6 text-black/50">
+                <span className="font-semibold text-black/70">
                   Important:
                 </span>{" "}
-                Both confirmation checkboxes must be
-                selected before the brief can be submitted.
+                Both confirmation checkboxes,
+                the required project information
+                and &ldquo;Ready for Design&rdquo;
+                must be completed before the
+                brief can be submitted.
               </p>
 
             </div>
 
           </div>
-
         </section>
 
         {/* SUBMIT */}
@@ -1707,10 +2026,11 @@ export default function TVUnitBriefPage() {
                 Submit TV Unit Brief
               </p>
 
-              <p className="mt-2 max-w-xl text-sm leading-6 text-gray-400">
-                Your completed brief will be securely
-                processed and prepared for the KBX Spatial
-                Atelier design process.
+              <p className="mt-2 max-w-xl text-sm leading-6 text-white/45">
+                Your completed brief will be
+                securely processed and prepared
+                for the KBX Spatial Atelier
+                design process.
               </p>
 
             </div>
@@ -1748,18 +2068,36 @@ export default function TVUnitBriefPage() {
 
       {/* FOOTER */}
 
-      <footer className="border-t border-gray-200 bg-white">
+      <footer className="border-t border-black/10 bg-white px-5 py-8 md:px-8">
 
-        <div className="mx-auto flex max-w-7xl flex-col gap-3 px-5 py-8 text-sm text-gray-500 sm:flex-row sm:items-center sm:justify-between sm:px-8">
+        <div className="mx-auto flex max-w-[1400px] flex-col gap-4 text-xs text-black/40 md:flex-row md:items-center md:justify-between">
+
+          <div className="flex items-center">
+
+            <div className="relative h-[48px] w-[100px] shrink-0 sm:h-[52px] sm:w-[105px]">
+              <Image
+                src="/kbx-logo.svg"
+                alt="KBX Spatial Atelier"
+                fill
+                sizes="105px"
+                className="object-contain object-left"
+              />
+            </div>
+
+            <div className="ml-2">
+              <p className="text-sm font-semibold text-black">
+                KBX Spatial Atelier
+              </p>
+
+              <p className="mt-1 text-[9px] uppercase tracking-[0.16em]">
+                TV Unit Brief
+              </p>
+            </div>
+
+          </div>
 
           <p>
-            © {new Date().getFullYear()} KBX Spatial
-            Atelier
-          </p>
-
-          <p>
-            Interior Design • Spatial Planning •
-            Visualization
+            © {new Date().getFullYear()} KBX Spatial Atelier
           </p>
 
         </div>
