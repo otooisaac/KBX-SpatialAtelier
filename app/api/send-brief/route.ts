@@ -11,6 +11,7 @@ import { Resend } from "resend";
 import { createClient } from "@supabase/supabase-js";
 import fs from "fs/promises";
 import path from "path";
+import sharp from "sharp";
 
 export const runtime = "nodejs";
 
@@ -23,13 +24,15 @@ const VERY_LIGHT = rgb(0.97, 0.97, 0.96);
 const WHITE = rgb(1, 1, 1);
 
 const KBX_EMAIL =
-  process.env.KBX_EMAIL || "otooisaackb2003@gmail.com";
+  process.env.KBX_EMAIL ||
+  "otooisaackb2003@gmail.com";
 
 const DEFAULT_FROM_EMAIL =
   "KBX Spatial Atelier <onboarding@resend.dev>";
 
 const STORAGE_BUCKET =
-  process.env.SUPABASE_STORAGE_BUCKET || "client-documents";
+  process.env.SUPABASE_STORAGE_BUCKET ||
+  "client-documents";
 
 type BriefType =
   | "kitchen"
@@ -119,16 +122,29 @@ function formatValue(value: unknown): string {
 
 function titleCaseKey(key: string): string {
   return key
-    .replace(/([a-z])([A-Z])/g, "$1 $2")
-    .replace(/[_-]+/g, " ")
-    .replace(/\s+/g, " ")
+    .replace(
+      /([a-z])([A-Z])/g,
+      "$1 $2"
+    )
+    .replace(
+      /[_-]+/g,
+      " "
+    )
+    .replace(
+      /\s+/g,
+      " "
+    )
     .trim()
-    .replace(/\b\w/g, (char) =>
-      char.toUpperCase()
+    .replace(
+      /\b\w/g,
+      (char) =>
+        char.toUpperCase()
     );
 }
 
-function getBriefLabel(type: BriefType): string {
+function getBriefLabel(
+  type: BriefType
+): string {
   switch (type) {
     case "kitchen":
       return "Kitchen & Storerooms";
@@ -147,7 +163,9 @@ function getBriefLabel(type: BriefType): string {
   }
 }
 
-function getBriefCode(type: BriefType): string {
+function getBriefCode(
+  type: BriefType
+): string {
   switch (type) {
     case "kitchen":
       return "01";
@@ -187,15 +205,30 @@ function getDocumentType(
   }
 }
 
-function safeFilename(value: string): string {
+function safeFilename(
+  value: string
+): string {
   return (
     value
       .normalize("NFKD")
-      .replace(/[^\w\s-]/g, "")
+      .replace(
+        /[^\w\s-]/g,
+        ""
+      )
       .trim()
-      .replace(/\s+/g, "_")
-      .replace(/_+/g, "_")
-      .slice(0, 80) || "KBX_Client_Brief"
+      .replace(
+        /\s+/g,
+        "_"
+      )
+      .replace(
+        /_+/g,
+        "_"
+      )
+      .slice(
+        0,
+        80
+      ) ||
+    "KBX_Client_Brief"
   );
 }
 
@@ -203,7 +236,8 @@ function normalizeBriefType(
   value: unknown,
   briefData: AnyObject
 ): BriefType | null {
-  const explicit = cleanText(value).toLowerCase();
+  const explicit =
+    cleanText(value).toLowerCase();
 
   if (
     explicit === "kitchen" ||
@@ -214,7 +248,8 @@ function normalizeBriefType(
     return explicit;
   }
 
-  const form = briefData?.form || {};
+  const form =
+    briefData?.form || {};
 
   if (
     "tvBrandModel" in form ||
@@ -266,18 +301,27 @@ function getClient(
 function getForm(
   briefData: AnyObject
 ): AnyObject {
-  return briefData?.form || {};
+  return (
+    briefData?.form || {}
+  );
 }
 
 function getClientName(
   briefData: AnyObject
 ): string {
-  const client = getClient(briefData);
-  const form = getForm(briefData);
+  const client =
+    getClient(briefData);
+
+  const form =
+    getForm(briefData);
 
   return (
-    cleanText(client.name) ||
-    cleanText(form.clientName) ||
+    cleanText(
+      client.name
+    ) ||
+    cleanText(
+      form.clientName
+    ) ||
     "Client"
   );
 }
@@ -285,23 +329,35 @@ function getClientName(
 function getClientEmail(
   briefData: AnyObject
 ): string {
-  const client = getClient(briefData);
-  const form = getForm(briefData);
+  const client =
+    getClient(briefData);
+
+  const form =
+    getForm(briefData);
 
   return (
-    cleanText(client.email) ||
-    cleanText(form.email)
+    cleanText(
+      client.email
+    ) ||
+    cleanText(
+      form.email
+    )
   );
 }
 
 function getClientId(
   briefData: AnyObject
 ): string {
-  const client = getClient(briefData);
+  const client =
+    getClient(briefData);
 
   return (
-    cleanText(client.id) ||
-    cleanText(client.clientId) ||
+    cleanText(
+      client.id
+    ) ||
+    cleanText(
+      client.clientId
+    ) ||
     ""
   );
 }
@@ -309,10 +365,13 @@ function getClientId(
 function getProjectName(
   briefData: AnyObject
 ): string {
-  const form = getForm(briefData);
+  const form =
+    getForm(briefData);
 
   return (
-    cleanText(form.projectName) ||
+    cleanText(
+      form.projectName
+    ) ||
     "Client Project"
   );
 }
@@ -320,10 +379,11 @@ function getProjectName(
 function addPage(
   ctx: PDFContext
 ): PDFContext {
-  const page = ctx.pdf.addPage([
-    ctx.width,
-    ctx.height,
-  ]);
+  const page =
+    ctx.pdf.addPage([
+      ctx.width,
+      ctx.height,
+    ]);
 
   drawPageHeader(
     page,
@@ -336,7 +396,9 @@ function addPage(
   return {
     ...ctx,
     page,
-    y: ctx.height - 95,
+    y:
+      ctx.height -
+      95,
   };
 }
 
@@ -345,7 +407,8 @@ function ensureSpace(
   requiredHeight = 60
 ): PDFContext {
   if (
-    ctx.y - requiredHeight <
+    ctx.y -
+      requiredHeight <
     50
   ) {
     return addPage(ctx);
@@ -364,11 +427,14 @@ function drawPageHeader(
   page.drawLine({
     start: {
       x: 45,
-      y: height - 38,
+      y:
+        height - 38,
     },
     end: {
-      x: width - 45,
-      y: height - 38,
+      x:
+        width - 45,
+      y:
+        height - 38,
     },
     thickness: 1,
     color: LIGHT_GRAY,
@@ -378,7 +444,8 @@ function drawPageHeader(
     "KBX SPATIAL ATELIER",
     {
       x: 45,
-      y: height - 30,
+      y:
+        height - 30,
       size: 7,
       font: bold,
       color: DARK_GRAY,
@@ -388,8 +455,12 @@ function drawPageHeader(
   page.drawText(
     "CLIENT DESIGN BRIEF",
     {
-      x: width - 45 - 90,
-      y: height - 30,
+      x:
+        width -
+        45 -
+        90,
+      y:
+        height - 30,
       size: 7,
       font: regular,
       color: MID_GRAY,
@@ -403,18 +474,32 @@ function wrapText(
   fontSize: number,
   maxWidth: number
 ): string[] {
-  const normalized = text
-    .replace(/\r\n/g, "\n")
-    .replace(/\r/g, "\n");
+  const normalized =
+    text
+      .replace(
+        /\r\n/g,
+        "\n"
+      )
+      .replace(
+        /\r/g,
+        "\n"
+      );
 
   const paragraphs =
-    normalized.split("\n");
+    normalized.split(
+      "\n"
+    );
 
-  const lines: string[] = [];
+  const lines: string[] =
+    [];
 
-  for (const paragraph of paragraphs) {
+  for (
+    const paragraph of paragraphs
+  ) {
     const words =
-      paragraph.split(/\s+/);
+      paragraph.split(
+        /\s+/
+      );
 
     if (
       words.length === 1 &&
@@ -424,12 +509,16 @@ function wrapText(
       continue;
     }
 
-    let current = "";
+    let current =
+      "";
 
-    for (const word of words) {
-      const candidate = current
-        ? `${current} ${word}`
-        : word;
+    for (
+      const word of words
+    ) {
+      const candidate =
+        current
+          ? `${current} ${word}`
+          : word;
 
       const textWidth =
         font.widthOfTextAtSize(
@@ -438,18 +527,26 @@ function wrapText(
         );
 
       if (
-        textWidth <= maxWidth ||
+        textWidth <=
+          maxWidth ||
         current.length === 0
       ) {
-        current = candidate;
+        current =
+          candidate;
       } else {
-        lines.push(current);
-        current = word;
+        lines.push(
+          current
+        );
+
+        current =
+          word;
       }
     }
 
     if (current) {
-      lines.push(current);
+      lines.push(
+        current
+      );
     }
   }
 
@@ -462,16 +559,22 @@ function drawWrappedText(
   options?: {
     size?: number;
     font?: PDFFont;
-    color?: ReturnType<typeof rgb>;
+    color?: ReturnType<
+      typeof rgb
+    >;
     lineHeight?: number;
     maxWidth?: number;
   }
 ): PDFContext {
   let current =
-    ensureSpace(ctx, 30);
+    ensureSpace(
+      ctx,
+      30
+    );
 
   const size =
-    options?.size || 9;
+    options?.size ||
+    9;
 
   const font =
     options?.font ||
@@ -490,25 +593,31 @@ function drawWrappedText(
     current.width -
       current.margin * 2;
 
-  const lines = wrapText(
-    text,
-    font,
-    size,
-    maxWidth
-  );
-
-  for (const line of lines) {
-    current = ensureSpace(
-      current,
-      lineHeight + 8
+  const lines =
+    wrapText(
+      text,
+      font,
+      size,
+      maxWidth
     );
+
+  for (
+    const line of lines
+  ) {
+    current =
+      ensureSpace(
+        current,
+        lineHeight + 8
+      );
 
     if (line) {
       current.page.drawText(
         line,
         {
-          x: current.margin,
-          y: current.y,
+          x:
+            current.margin,
+          y:
+            current.y,
           size,
           font,
           color,
@@ -516,7 +625,8 @@ function drawWrappedText(
       );
     }
 
-    current.y -= lineHeight;
+    current.y -=
+      lineHeight;
   }
 
   return current;
@@ -528,21 +638,30 @@ function drawSectionTitle(
   title: string
 ): PDFContext {
   let current =
-    ensureSpace(ctx, 60);
+    ensureSpace(
+      ctx,
+      60
+    );
 
-  current.page.drawRectangle({
-    x: current.margin,
-    y: current.y - 5,
-    width: 25,
-    height: 25,
-    color: RED,
-  });
+  current.page.drawRectangle(
+    {
+      x:
+        current.margin,
+      y:
+        current.y - 5,
+      width: 25,
+      height: 25,
+      color: RED,
+    }
+  );
 
   current.page.drawText(
     number,
     {
-      x: current.margin + 7,
-      y: current.y + 2,
+      x:
+        current.margin + 7,
+      y:
+        current.y + 2,
       size: 8,
       font: current.bold,
       color: WHITE,
@@ -552,8 +671,10 @@ function drawSectionTitle(
   current.page.drawText(
     title.toUpperCase(),
     {
-      x: current.margin + 35,
-      y: current.y + 2,
+      x:
+        current.margin + 35,
+      y:
+        current.y + 2,
       size: 10,
       font: current.bold,
       color: BLACK,
@@ -562,20 +683,25 @@ function drawSectionTitle(
 
   current.y -= 38;
 
-  current.page.drawLine({
-    start: {
-      x: current.margin,
-      y: current.y,
-    },
-    end: {
-      x:
-        current.width -
-        current.margin,
-      y: current.y,
-    },
-    thickness: 0.6,
-    color: LIGHT_GRAY,
-  });
+  current.page.drawLine(
+    {
+      start: {
+        x:
+          current.margin,
+        y:
+          current.y,
+      },
+      end: {
+        x:
+          current.width -
+          current.margin,
+        y:
+          current.y,
+      },
+      thickness: 0.6,
+      color: LIGHT_GRAY,
+    }
+  );
 
   current.y -= 18;
 
@@ -588,16 +714,23 @@ function drawField(
   value: unknown
 ): PDFContext {
   let current =
-    ensureSpace(ctx, 50);
+    ensureSpace(
+      ctx,
+      50
+    );
 
   const text =
-    formatValue(value);
+    formatValue(
+      value
+    );
 
   current.page.drawText(
     label,
     {
-      x: current.margin,
-      y: current.y,
+      x:
+        current.margin,
+      y:
+        current.y,
       size: 7.5,
       font: current.bold,
       color: MID_GRAY,
@@ -606,28 +739,36 @@ function drawField(
 
   current.y -= 13;
 
-  const lines = wrapText(
-    text,
-    current.regular,
-    9,
-    current.width -
-      current.margin * 2
-  );
-
-  for (const line of lines) {
-    current = ensureSpace(
-      current,
-      16
+  const lines =
+    wrapText(
+      text,
+      current.regular,
+      9,
+      current.width -
+        current.margin * 2
     );
+
+  for (
+    const line of lines
+  ) {
+    current =
+      ensureSpace(
+        current,
+        16
+      );
 
     current.page.drawText(
       line,
       {
-        x: current.margin,
-        y: current.y,
+        x:
+          current.margin,
+        y:
+          current.y,
         size: 9,
-        font: current.regular,
-        color: DARK_GRAY,
+        font:
+          current.regular,
+        color:
+          DARK_GRAY,
       }
     );
 
@@ -641,7 +782,9 @@ function drawField(
 
 function drawFieldGrid(
   ctx: PDFContext,
-  fields: Array<[string, unknown]>
+  fields: Array<
+    [string, unknown]
+  >
 ): PDFContext {
   let current = ctx;
 
@@ -677,17 +820,23 @@ function drawFieldGrid(
     current.page.drawText(
       left[0],
       {
-        x: current.margin,
-        y: startY,
+        x:
+          current.margin,
+        y:
+          startY,
         size: 7.5,
-        font: current.bold,
-        color: MID_GRAY,
+        font:
+          current.bold,
+        color:
+          MID_GRAY,
       }
     );
 
     const leftLines =
       wrapText(
-        formatValue(left[1]),
+        formatValue(
+          left[1]
+        ),
         current.regular,
         9,
         columnWidth
@@ -700,16 +849,22 @@ function drawFieldGrid(
       lineIndex++
     ) {
       current.page.drawText(
-        leftLines[lineIndex],
+        leftLines[
+          lineIndex
+        ],
         {
-          x: current.margin,
+          x:
+            current.margin,
           y:
             startY -
             13 -
-            lineIndex * 13,
+            lineIndex *
+              13,
           size: 9,
-          font: current.regular,
-          color: DARK_GRAY,
+          font:
+            current.regular,
+          color:
+            DARK_GRAY,
         }
       );
     }
@@ -726,8 +881,10 @@ function drawFieldGrid(
           x: rightX,
           y: startY,
           size: 7.5,
-          font: current.bold,
-          color: MID_GRAY,
+          font:
+            current.bold,
+          color:
+            MID_GRAY,
         }
       );
 
@@ -748,16 +905,22 @@ function drawFieldGrid(
         lineIndex++
       ) {
         current.page.drawText(
-          rightLines[lineIndex],
+          rightLines[
+            lineIndex
+          ],
           {
-            x: rightX,
+            x:
+              rightX,
             y:
               startY -
               13 -
-              lineIndex * 13,
+              lineIndex *
+                13,
             size: 9,
-            font: current.regular,
-            color: DARK_GRAY,
+            font:
+              current.regular,
+            color:
+              DARK_GRAY,
           }
         );
       }
@@ -803,11 +966,13 @@ function drawObjectFields(
 
   const excluded =
     new Set(
-      options?.exclude || []
+      options?.exclude ||
+        []
     );
 
   const maxDepth =
-    options?.maxDepth ?? 2;
+    options?.maxDepth ??
+    2;
 
   function render(
     valueObject: AnyObject,
@@ -819,24 +984,29 @@ function drawObjectFields(
       ).filter(
         ([key, value]) =>
           !excluded.has(key) &&
-          value !== undefined &&
+          value !==
+            undefined &&
           value !== null &&
           value !== ""
       );
 
     for (
-      const [key, value] of entries
+      const [key, value] of
+        entries
     ) {
       if (
         depth < maxDepth &&
         value &&
-        typeof value === "object" &&
+        typeof value ===
+          "object" &&
         !Array.isArray(value)
       ) {
         current =
           drawSubheading(
             current,
-            titleCaseKey(key)
+            titleCaseKey(
+              key
+            )
           );
 
         render(
@@ -850,13 +1020,18 @@ function drawObjectFields(
       current =
         drawField(
           current,
-          titleCaseKey(key),
+          titleCaseKey(
+            key
+          ),
           value
         );
     }
   }
 
-  render(object, 0);
+  render(
+    object,
+    0
+  );
 
   return current;
 }
@@ -866,15 +1041,21 @@ function drawSubheading(
   title: string
 ): PDFContext {
   let current =
-    ensureSpace(ctx, 35);
+    ensureSpace(
+      ctx,
+      35
+    );
 
   current.page.drawText(
     title,
     {
-      x: current.margin,
-      y: current.y,
+      x:
+        current.margin,
+      y:
+        current.y,
       size: 8.5,
-      font: current.bold,
+      font:
+        current.bold,
       color: RED,
     }
   );
@@ -895,7 +1076,9 @@ function getSections(
   object?: AnyObject;
   exclude?: string[];
 }> {
-  if (type === "tv_unit") {
+  if (
+    type === "tv_unit"
+  ) {
     return [
       {
         title:
@@ -1104,7 +1287,9 @@ function getSections(
     ];
   }
 
-  if (type === "wardrobe") {
+  if (
+    type === "wardrobe"
+  ) {
     return [
       {
         title:
@@ -1323,7 +1508,9 @@ function getSections(
     ];
   }
 
-  if (type === "kitchen") {
+  if (
+    type === "kitchen"
+  ) {
     return [
       {
         title:
@@ -1477,183 +1664,58 @@ function getSections(
   ];
 }
 
-function drawCoverPage(
-  ctx: PDFContext,
-  type: BriefType,
-  briefData: AnyObject
-): PDFContext {
-  let current = ctx;
-
-  const projectName =
-    getProjectName(briefData);
-
-  const clientName =
-    getClientName(briefData);
-
-  const location =
-    cleanText(
-      getForm(briefData)
-        .projectLocation
-    ) || "Not provided";
-
-  current.page.drawText(
-    "KBX SPATIAL ATELIER",
-    {
-      x: current.margin,
-      y: current.height - 145,
-      size: 10,
-      font: current.bold,
-      color: RED,
-    }
-  );
-
-  current.page.drawText(
-    getBriefLabel(type),
-    {
-      x: current.margin,
-      y: current.height - 205,
-      size: 27,
-      font: current.bold,
-      color: BLACK,
-    }
-  );
-
-  current.page.drawText(
-    "CLIENT DESIGN BRIEF",
-    {
-      x: current.margin,
-      y: current.height - 232,
-      size: 8,
-      font: current.regular,
-      color: MID_GRAY,
-    }
-  );
-
-  current.page.drawLine({
-    start: {
-      x: current.margin,
-      y: current.height - 265,
-    },
-    end: {
-      x:
-        current.width -
-        current.margin,
-      y: current.height - 265,
-    },
-    thickness: 1,
-    color: LIGHT_GRAY,
-  });
-
-  let infoY =
-    current.height - 315;
-
-  const coverFields = [
-    [
-      "Project",
-      projectName,
-    ],
-    [
-      "Client",
-      clientName,
-    ],
-    [
-      "Location",
-      location,
-    ],
-    [
-      "Document Type",
-      getBriefLabel(type),
-    ],
-  ];
-
-  for (
-    const [label, value] of coverFields
-  ) {
-    current.page.drawText(
-      label,
-      {
-        x: current.margin,
-        y: infoY,
-        size: 7,
-        font: current.bold,
-        color: MID_GRAY,
-      }
-    );
-
-    current.page.drawText(
-      value,
-      {
-        x:
-          current.margin + 95,
-        y: infoY,
-        size: 10,
-        font: current.regular,
-        color: DARK_GRAY,
-      }
-    );
-
-    infoY -= 30;
-  }
-
-  current.page.drawRectangle({
-    x: current.margin,
-    y: 80,
-    width:
-      current.width -
-      current.margin * 2,
-    height: 52,
-    color: VERY_LIGHT,
-  });
-
-  current.page.drawText(
-    "Prepared by KBX Spatial Atelier",
-    {
-      x: current.margin + 18,
-      y: 111,
-      size: 8,
-      font: current.bold,
-      color: DARK_GRAY,
-    }
-  );
-
-  current.page.drawText(
-    "Interior Design • Interior Architecture • Bespoke Space",
-    {
-      x: current.margin + 18,
-      y: 94,
-      size: 7,
-      font: current.regular,
-      color: MID_GRAY,
-    }
-  );
-
-  return current;
-}
-
+/**
+ * Load the actual KBX SVG logo from:
+ *
+ * public/kbx-logo.svg
+ *
+ * SVG cannot be embedded directly by pdf-lib,
+ * so Sharp converts it to a high-resolution PNG
+ * in memory before pdf-lib embeds it.
+ */
 async function loadPdfLogo(
   pdf: PDFDocument
 ): Promise<PDFImage | null> {
-  try {
-    const logoPath =
-      path.join(
-        process.cwd(),
-        "public",
-        "kbx-logo-pdf.png"
-      );
+  const logoPath =
+    path.join(
+      process.cwd(),
+      "public",
+      "kbx-logo.svg"
+    );
 
+  try {
     const logoBytes =
       await fs.readFile(
         logoPath
       );
 
+    const pngBytes =
+      await sharp(
+        logoBytes
+      )
+        .png()
+        .toBuffer();
+
     return await pdf.embedPng(
-      logoBytes
+      pngBytes
     );
-  } catch {
+  } catch (error) {
+    console.error(
+      "KBX PDF logo could not be loaded:",
+      {
+        logoPath,
+        error,
+      }
+    );
+
     return null;
   }
 }
 
+/**
+ * Large centered KBX logo at the top
+ * of the first PDF cover page.
+ */
 function drawLogoOnCover(
   page: PDFPage,
   logo: PDFImage | null,
@@ -1664,13 +1726,15 @@ function drawLogoOnCover(
     return;
   }
 
-  const maxWidth = 280;
-  const maxHeight = 90;
+  const maxWidth = 360;
+  const maxHeight = 125;
 
   const scale =
     Math.min(
-      maxWidth / logo.width,
-      maxHeight / logo.height
+      maxWidth /
+        logo.width,
+      maxHeight /
+        logo.height
     );
 
   const logoWidth =
@@ -1682,15 +1746,284 @@ function drawLogoOnCover(
   page.drawImage(
     logo,
     {
-      x: 45,
+      x:
+        (
+          width -
+          logoWidth
+        ) / 2,
+
       y:
         height -
-        55 -
+        65 -
         logoHeight,
-      width: logoWidth,
-      height: logoHeight,
+
+      width:
+        logoWidth,
+
+      height:
+        logoHeight,
     }
   );
+}
+
+function drawCoverPage(
+  ctx: PDFContext,
+  type: BriefType,
+  briefData: AnyObject
+): PDFContext {
+  let current = ctx;
+
+  const projectName =
+    getProjectName(
+      briefData
+    );
+
+  const clientName =
+    getClientName(
+      briefData
+    );
+
+  const location =
+    cleanText(
+      getForm(
+        briefData
+      ).projectLocation
+    ) ||
+    "Not provided";
+
+  /*
+   * The logo now occupies the
+   * upper portion of the cover.
+   *
+   * The title begins lower so it
+   * never overlaps the logo.
+   */
+
+  current.page.drawText(
+    getBriefLabel(type),
+    {
+      x:
+        current.margin,
+
+      y:
+        current.height -
+        245,
+
+      size: 27,
+
+      font:
+        current.bold,
+
+      color:
+        BLACK,
+    }
+  );
+
+  current.page.drawText(
+    "CLIENT DESIGN BRIEF",
+    {
+      x:
+        current.margin,
+
+      y:
+        current.height -
+        272,
+
+      size: 8,
+
+      font:
+        current.regular,
+
+      color:
+        MID_GRAY,
+    }
+  );
+
+  current.page.drawText(
+    `DOCUMENT ${getBriefCode(
+      type
+    )}`,
+    {
+      x:
+        current.width -
+        current.margin -
+        65,
+
+      y:
+        current.height -
+        272,
+
+      size: 7,
+
+      font:
+        current.bold,
+
+      color:
+        RED,
+    }
+  );
+
+  current.page.drawLine({
+    start: {
+      x:
+        current.margin,
+
+      y:
+        current.height -
+        300,
+    },
+
+    end: {
+      x:
+        current.width -
+        current.margin,
+
+      y:
+        current.height -
+        300,
+    },
+
+    thickness: 1,
+
+    color:
+      LIGHT_GRAY,
+  });
+
+  let infoY =
+    current.height -
+    350;
+
+  const coverFields =
+    [
+      [
+        "Project",
+        projectName,
+      ],
+      [
+        "Client",
+        clientName,
+      ],
+      [
+        "Location",
+        location,
+      ],
+      [
+        "Document Type",
+        getBriefLabel(
+          type
+        ),
+      ],
+    ];
+
+  for (
+    const [label, value] of
+      coverFields
+  ) {
+    current.page.drawText(
+      label,
+      {
+        x:
+          current.margin,
+
+        y:
+          infoY,
+
+        size: 7,
+
+        font:
+          current.bold,
+
+        color:
+          MID_GRAY,
+      }
+    );
+
+    const valueText =
+      cleanText(
+        value
+      ) ||
+      "Not provided";
+
+    current.page.drawText(
+      valueText,
+      {
+        x:
+          current.margin +
+          95,
+
+        y:
+          infoY,
+
+        size: 10,
+
+        font:
+          current.regular,
+
+        color:
+          DARK_GRAY,
+      }
+    );
+
+    infoY -= 30;
+  }
+
+  current.page.drawRectangle(
+    {
+      x:
+        current.margin,
+
+      y: 80,
+
+      width:
+        current.width -
+        current.margin * 2,
+
+      height: 52,
+
+      color:
+        VERY_LIGHT,
+    }
+  );
+
+  current.page.drawText(
+    "Prepared by KBX Spatial Atelier",
+    {
+      x:
+        current.margin +
+        18,
+
+      y: 111,
+
+      size: 8,
+
+      font:
+        current.bold,
+
+      color:
+        DARK_GRAY,
+    }
+  );
+
+  current.page.drawText(
+    "Interior Design • Interior Architecture • Bespoke Space",
+    {
+      x:
+        current.margin +
+        18,
+
+      y: 94,
+
+      size: 7,
+
+      font:
+        current.regular,
+
+      color:
+        MID_GRAY,
+    }
+  );
+
+  return current;
 }
 
 async function buildPDF(
@@ -1710,26 +2043,47 @@ async function buildPDF(
       StandardFonts.HelveticaBold
     );
 
-  const width = 595.28;
-  const height = 841.89;
-  const margin = 45;
+  const width =
+    595.28;
 
-  let ctx: PDFContext = {
-    pdf,
-    page: pdf.addPage([
+  const height =
+    841.89;
+
+  const margin =
+    45;
+
+  let ctx: PDFContext =
+    {
+      pdf,
+
+      page:
+        pdf.addPage([
+          width,
+          height,
+        ]),
+
+      regular,
+
+      bold,
+
       width,
-      height,
-    ]),
-    regular,
-    bold,
-    width,
-    height,
-    margin,
-    y: height - 95,
-  };
 
+      height,
+
+      margin,
+
+      y:
+        height - 95,
+    };
+
+  /*
+   * Load and draw the real
+   * public/kbx-logo.svg logo.
+   */
   const logo =
-    await loadPdfLogo(pdf);
+    await loadPdfLogo(
+      pdf
+    );
 
   drawLogoOnCover(
     ctx.page,
@@ -1745,30 +2099,42 @@ async function buildPDF(
       briefData
     );
 
-  ctx = addPage(ctx);
+  ctx =
+    addPage(ctx);
 
   const sections =
     getSections(
       type,
-      getForm(briefData)
+      getForm(
+        briefData
+      )
     );
 
-  let sectionNumber = 1;
+  let sectionNumber =
+    1;
 
   for (
-    const section of sections
+    const section of
+      sections
   ) {
     ctx =
       drawSectionTitle(
         ctx,
-        String(sectionNumber)
-          .padStart(2, "0"),
+
+        String(
+          sectionNumber
+        ).padStart(
+          2,
+          "0"
+        ),
+
         section.title
       );
 
     if (
       section.fields &&
-      section.fields.length > 0
+      section.fields.length >
+        0
     ) {
       ctx =
         drawFieldGrid(
@@ -1777,7 +2143,9 @@ async function buildPDF(
         );
     }
 
-    if (section.object) {
+    if (
+      section.object
+    ) {
       ctx =
         drawObjectFields(
           ctx,
@@ -1785,6 +2153,7 @@ async function buildPDF(
           {
             exclude:
               section.exclude,
+
             maxDepth: 2,
           }
         );
@@ -1808,7 +2177,9 @@ async function buildPDF(
       [
         [
           "Brief Type",
-          getBriefLabel(type),
+          getBriefLabel(
+            type
+          ),
         ],
         [
           "Submission Date",
@@ -1827,7 +2198,8 @@ async function buildPDF(
         ],
         [
           "Submitted",
-          briefData.submitted !== false,
+          briefData.submitted !==
+            false,
         ],
       ]
     );
@@ -1837,23 +2209,31 @@ async function buildPDF(
 
   for (
     let pageIndex = 0;
-    pageIndex < pages.length;
+    pageIndex <
+    pages.length;
     pageIndex++
   ) {
     const page =
-      pages[pageIndex];
+      pages[
+        pageIndex
+      ];
 
     page.drawLine({
       start: {
         x: 45,
         y: 35,
       },
+
       end: {
-        x: width - 45,
+        x:
+          width - 45,
         y: 35,
       },
+
       thickness: 0.6,
-      color: LIGHT_GRAY,
+
+      color:
+        LIGHT_GRAY,
     });
 
     page.drawText(
@@ -1868,9 +2248,14 @@ async function buildPDF(
     );
 
     page.drawText(
-      `Page ${pageIndex + 1} of ${pages.length}`,
+      `Page ${
+        pageIndex + 1
+      } of ${
+        pages.length
+      }`,
       {
-        x: width - 95,
+        x:
+          width - 95,
         y: 22,
         size: 7,
         font: regular,
@@ -1886,7 +2271,9 @@ async function appendReferenceImages(
   pdfBytes: Uint8Array,
   images: ReferenceImage[]
 ): Promise<Uint8Array> {
-  if (images.length === 0) {
+  if (
+    images.length === 0
+  ) {
     return pdfBytes;
   }
 
@@ -1905,9 +2292,14 @@ async function appendReferenceImages(
       StandardFonts.HelveticaBold
     );
 
-  const width = 595.28;
-  const height = 841.89;
-  const margin = 45;
+  const width =
+    595.28;
+
+  const height =
+    841.89;
+
+  const margin =
+    45;
 
   let page =
     pdf.addPage([
@@ -1944,41 +2336,53 @@ async function appendReferenceImages(
 
   y -= 30;
 
-  let imageCount = 0;
+  let imageCount =
+    0;
 
   for (
-    const reference of images.slice(
-      0,
-      12
-    )
+    const reference of
+      images.slice(
+        0,
+        12
+      )
   ) {
     let embedded:
       | PDFImage
       | null = null;
 
     try {
-      const type =
-        reference.type.toLowerCase();
+      const imageType =
+        reference.type
+          .toLowerCase();
 
       if (
-        type === "image/png" ||
+        imageType ===
+          "image/png" ||
         reference.name
           .toLowerCase()
-          .endsWith(".png")
+          .endsWith(
+            ".png"
+          )
       ) {
         embedded =
           await pdf.embedPng(
             reference.bytes
           );
       } else if (
-        type === "image/jpeg" ||
-        type === "image/jpg" ||
+        imageType ===
+          "image/jpeg" ||
+        imageType ===
+          "image/jpg" ||
         reference.name
           .toLowerCase()
-          .endsWith(".jpg") ||
+          .endsWith(
+            ".jpg"
+          ) ||
         reference.name
           .toLowerCase()
-          .endsWith(".jpeg")
+          .endsWith(
+            ".jpeg"
+          )
       ) {
         embedded =
           await pdf.embedJpg(
@@ -1994,22 +2398,30 @@ async function appendReferenceImages(
     }
 
     const maxWidth =
-      width - margin * 2;
+      width -
+      margin * 2;
 
-    const maxHeight = 330;
+    const maxHeight =
+      330;
 
     const scale =
       Math.min(
-        maxWidth / embedded.width,
-        maxHeight / embedded.height,
+        maxWidth /
+          embedded.width,
+
+        maxHeight /
+          embedded.height,
+
         1
       );
 
     const displayWidth =
-      embedded.width * scale;
+      embedded.width *
+      scale;
 
     const displayHeight =
-      embedded.height * scale;
+      embedded.height *
+      scale;
 
     if (
       y -
@@ -2023,7 +2435,8 @@ async function appendReferenceImages(
           height,
         ]);
 
-      y = height - 65;
+      y =
+        height - 65;
 
       page.drawText(
         "REFERENCE IMAGES",
@@ -2044,17 +2457,21 @@ async function appendReferenceImages(
       (
         maxWidth -
         displayWidth
-      ) / 2;
+      ) /
+        2;
 
     page.drawImage(
       embedded,
       {
         x,
+
         y:
           y -
           displayHeight,
+
         width:
           displayWidth,
+
         height:
           displayHeight,
       }
@@ -2065,7 +2482,11 @@ async function appendReferenceImages(
       14;
 
     page.drawText(
-      `${imageCount + 1}. ${reference.name}`,
+      `${
+        imageCount + 1
+      }. ${
+        reference.name
+      }`,
       {
         x: margin,
         y,
@@ -2085,23 +2506,31 @@ async function appendReferenceImages(
 
   for (
     let pageIndex = 0;
-    pageIndex < pages.length;
+    pageIndex <
+    pages.length;
     pageIndex++
   ) {
     const currentPage =
-      pages[pageIndex];
+      pages[
+        pageIndex
+      ];
 
     currentPage.drawLine({
       start: {
         x: 45,
         y: 35,
       },
+
       end: {
-        x: width - 45,
+        x:
+          width - 45,
         y: 35,
       },
+
       thickness: 0.6,
-      color: LIGHT_GRAY,
+
+      color:
+        LIGHT_GRAY,
     });
 
     currentPage.drawText(
@@ -2116,9 +2545,14 @@ async function appendReferenceImages(
     );
 
     currentPage.drawText(
-      `Page ${pageIndex + 1} of ${pages.length}`,
+      `Page ${
+        pageIndex + 1
+      } of ${
+        pages.length
+      }`,
       {
-        x: width - 95,
+        x:
+          width - 95,
         y: 22,
         size: 7,
         font: regular,
@@ -2138,13 +2572,16 @@ async function readReferenceImages(
       "referenceImages"
     );
 
-  const images: ReferenceImage[] =
-    [];
+  const images:
+    ReferenceImage[] = [];
 
   for (
-    const entry of entries
+    const entry of
+      entries
   ) {
-    if (!(entry instanceof File)) {
+    if (
+      !(entry instanceof File)
+    ) {
       continue;
     }
 
@@ -2172,7 +2609,9 @@ async function readReferenceImages(
       file: entry,
       name:
         entry.name ||
-        `reference-${images.length + 1}`,
+        `reference-${
+          images.length + 1
+        }`,
       type: entry.type,
       bytes,
     });
@@ -2207,8 +2646,11 @@ function getSupabase() {
     serviceRoleKey,
     {
       auth: {
-        autoRefreshToken: false,
-        persistSession: false,
+        autoRefreshToken:
+          false,
+
+        persistSession:
+          false,
       },
     }
   );
@@ -2224,7 +2666,9 @@ async function savePdfToSupabase(
     getSupabase();
 
   const clientId =
-    getClientId(briefData);
+    getClientId(
+      briefData
+    );
 
   const clientName =
     getClientName(
@@ -2241,11 +2685,6 @@ async function savePdfToSupabase(
       briefData
     );
 
-  /*
-   * Keep the existing client-folder
-   * behaviour so previously generated
-   * documents are not affected.
-   */
   const clientFolder =
     safeFilename(
       clientId ||
@@ -2260,7 +2699,8 @@ async function savePdfToSupabase(
     `briefs/${clientFolder}/${type}/${timestamp}_${filename}`;
 
   const {
-    error: uploadError,
+    error:
+      uploadError,
   } =
     await supabase.storage
       .from(
@@ -2274,18 +2714,23 @@ async function savePdfToSupabase(
         {
           contentType:
             "application/pdf",
-          upsert: true,
+
+          upsert:
+            true,
         }
       );
 
-  if (uploadError) {
+  if (
+    uploadError
+  ) {
     throw new Error(
       `Supabase Storage upload failed: ${uploadError.message}`
     );
   }
 
   const {
-    data: publicUrlData,
+    data:
+      publicUrlData,
   } =
     supabase.storage
       .from(
@@ -2296,7 +2741,8 @@ async function savePdfToSupabase(
       );
 
   const pdfUrl =
-    publicUrlData?.publicUrl ||
+    publicUrlData
+      ?.publicUrl ||
     "";
 
   if (!pdfUrl) {
@@ -2305,13 +2751,6 @@ async function savePdfToSupabase(
     );
   }
 
-  /*
-   * IMPORTANT:
-   *
-   * This is now the specific brief
-   * type instead of the old generic
-   * "client_brief".
-   */
   const documentType =
     getDocumentType(
       type
@@ -2322,65 +2761,61 @@ async function savePdfToSupabase(
       type
     )} — ${projectName}`;
 
-  /*
-   * Complete client_documents record.
-   *
-   * We intentionally populate both
-   * the newer descriptive columns
-   * and the older/legacy columns
-   * currently present in your table.
-   *
-   * This means existing code will
-   * continue to work while the
-   * document system is being upgraded.
-   */
-  const documentPayload = {
-    client_id:
-      clientId || null,
+  const documentPayload =
+    {
+      client_id:
+        clientId ||
+        null,
 
-    client_name:
-      clientName || null,
+      client_name:
+        clientName ||
+        null,
 
-    client_email:
-      clientEmail || null,
+      client_email:
+        clientEmail ||
+        null,
 
-    project_name:
-      projectName || null,
+      project_name:
+        projectName ||
+        null,
 
-    document_name:
-      documentName,
+      document_name:
+        documentName,
 
-    document_type:
-      documentType,
+      document_type:
+        documentType,
 
-    storage_path:
-      storagePath,
+      storage_path:
+        storagePath,
 
-    mime_type:
-      "application/pdf",
+      mime_type:
+        "application/pdf",
 
-    file_size:
-      pdfBytes.byteLength,
+      file_size:
+        pdfBytes.byteLength,
 
-    created_at:
-      new Date().toISOString(),
+      created_at:
+        new Date()
+          .toISOString(),
 
-    file_name:
-      filename,
+      file_name:
+        filename,
 
-    file_path:
-      storagePath,
+      file_path:
+        storagePath,
 
-    file_url:
-      pdfUrl,
+      file_url:
+        pdfUrl,
 
-    title:
-      documentName,
-  };
+      title:
+        documentName,
+    };
 
   const {
-    data: documentRecord,
-    error: documentError,
+    data:
+      documentRecord,
+    error:
+      documentError,
   } =
     await supabase
       .from(
@@ -2392,7 +2827,9 @@ async function savePdfToSupabase(
       .select()
       .single();
 
-  if (documentError) {
+  if (
+    documentError
+  ) {
     throw new Error(
       `Client document record creation failed: ${documentError.message}`
     );
@@ -2449,32 +2886,32 @@ async function sendEmail(
           options.subject,
 
         html: `
-          <div style="font-family: Arial, Helvetica, sans-serif; background:#f7f7f5; padding:32px;">
-            <div style="max-width:680px; margin:0 auto; background:#ffffff; padding:36px; border:1px solid #e8e8e5;">
+          <div style="font-family:Arial,Helvetica,sans-serif;background:#f7f7f5;padding:32px;">
+            <div style="max-width:680px;margin:0 auto;background:#ffffff;padding:36px;border:1px solid #e8e8e5;">
 
-              <div style="font-size:11px; letter-spacing:2px; font-weight:700; color:#910B0A; text-transform:uppercase;">
+              <div style="font-size:11px;letter-spacing:2px;font-weight:700;color:#910B0A;text-transform:uppercase;">
                 KBX Spatial Atelier
               </div>
 
-              <h1 style="font-size:26px; margin:18px 0 10px; color:#111111;">
+              <h1 style="font-size:26px;margin:18px 0 10px;color:#111111;">
                 ${options.heading}
               </h1>
 
-              <p style="font-size:14px; line-height:1.7; color:#555555;">
+              <p style="font-size:14px;line-height:1.7;color:#555555;">
                 ${options.message}
               </p>
 
-              <div style="margin-top:28px; padding:18px; background:#f7f7f5; border-left:3px solid #910B0A;">
-                <div style="font-size:12px; font-weight:700; color:#222222;">
+              <div style="margin-top:28px;padding:18px;background:#f7f7f5;border-left:3px solid #910B0A;">
+                <div style="font-size:12px;font-weight:700;color:#222222;">
                   Attached document
                 </div>
 
-                <div style="font-size:12px; color:#777777; margin-top:5px;">
+                <div style="font-size:12px;color:#777777;margin-top:5px;">
                   ${options.filename}
                 </div>
               </div>
 
-              <p style="font-size:11px; line-height:1.6; color:#999999; margin-top:30px;">
+              <p style="font-size:11px;line-height:1.6;color:#999999;margin-top:30px;">
                 KBX Spatial Atelier<br/>
                 Interior Design • Interior Architecture • Bespoke Space
               </p>
@@ -2499,7 +2936,9 @@ async function sendEmail(
       }
     );
 
-  if (result.error) {
+  if (
+    result.error
+  ) {
     throw new Error(
       `Email delivery failed: ${result.error.message}`
     );
@@ -2521,10 +2960,12 @@ export async function POST(
         "content-type"
       ) || "";
 
-    let briefData: AnyObject;
+    let briefData:
+      AnyObject;
 
     let referenceImages:
-      ReferenceImage[] = [];
+      ReferenceImage[] =
+        [];
 
     /*
      * -------------------------------------------------------
@@ -2556,7 +2997,9 @@ export async function POST(
       ) {
         return NextResponse.json(
           {
-            success: false,
+            success:
+              false,
+
             error:
               "Missing briefData.",
           },
@@ -2574,7 +3017,9 @@ export async function POST(
       } catch {
         return NextResponse.json(
           {
-            success: false,
+            success:
+              false,
+
             error:
               "briefData is not valid JSON.",
           },
@@ -2612,7 +3057,9 @@ export async function POST(
     if (!briefType) {
       return NextResponse.json(
         {
-          success: false,
+          success:
+            false,
+
           error:
             "Unable to determine the brief type. Send briefType as kitchen, wardrobe, tv_unit, or full_interior.",
         },
@@ -2645,7 +3092,9 @@ export async function POST(
     if (!clientEmail) {
       return NextResponse.json(
         {
-          success: false,
+          success:
+            false,
+
           error:
             "The client email address is missing from the client profile.",
         },
@@ -2655,12 +3104,6 @@ export async function POST(
       );
     }
 
-    /*
-     * Client ID is not required for
-     * PDF generation, but we record
-     * it whenever the current portal
-     * provides one.
-     */
     if (!clientId) {
       console.warn(
         "Brief submitted without a client ID. The document will be stored with a NULL client_id until authentication is upgraded."
@@ -2680,7 +3123,8 @@ export async function POST(
       );
 
     if (
-      referenceImages.length > 0
+      referenceImages.length >
+      0
     ) {
       pdfBytes =
         await appendReferenceImages(
@@ -2755,7 +3199,8 @@ export async function POST(
     await sendEmail(
       resend,
       {
-        to: KBX_EMAIL,
+        to:
+          KBX_EMAIL,
 
         subject:
           `New ${getBriefLabel(
@@ -2815,7 +3260,8 @@ export async function POST(
 
     return NextResponse.json(
       {
-        success: true,
+        success:
+          true,
 
         briefType,
 
@@ -2830,9 +3276,11 @@ export async function POST(
         documentName:
           storageResult.documentName,
 
-        pdfGenerated: true,
+        pdfGenerated:
+          true,
 
-        pdfStored: true,
+        pdfStored:
+          true,
 
         pdfUrl:
           storageResult.pdfUrl,
@@ -2859,7 +3307,8 @@ export async function POST(
           true,
 
         clientId:
-          clientId || null,
+          clientId ||
+          null,
 
         clientEmail,
 
@@ -2887,11 +3336,13 @@ export async function POST(
 
     return NextResponse.json(
       {
-        success: false,
+        success:
+          false,
 
         briefType,
 
-        error: message,
+        error:
+          message,
 
         pdfGenerated:
           false,
