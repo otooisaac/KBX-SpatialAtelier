@@ -1281,7 +1281,7 @@ export default function WardrobeBriefPage() {
                   </p>
 
                   <p className="mt-1 text-xs leading-5 text-black/40">
-                    Upload images that represent the client's preferred
+                    Upload images that represent the client&apos;s preferred
                     wardrobes, colours, finishes, doors, handles, internal
                     layouts or details.
                   </p>
