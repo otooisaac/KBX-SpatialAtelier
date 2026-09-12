@@ -2,7 +2,11 @@
 
 import Image from "next/image";
 import Link from "next/link";
-import { useEffect, useState } from "react";
+import {
+  useCallback,
+  useEffect,
+  useState,
+} from "react";
 
 const RED = "#910B0A";
 
@@ -27,19 +31,73 @@ type BriefStatus =
 type ClientDocument = {
   id: string;
   client_id: string;
+
   client_name?: string;
-  client_email: string;
+  client_email?: string;
+
   project_name: string | null;
+
   document_name: string;
   document_type: string;
-  storage_path?: string;
-  mime_type?: string;
-  file_size?: number;
+
+  storage_path?: string | null;
+  mime_type?: string | null;
+  file_size?: number | null;
+
   created_at: string;
 
-  view_url?: string;
-  download_url?: string;
+  file_name?: string | null;
+  file_path?: string | null;
+  file_url?: string | null;
+  title?: string | null;
+
+  view_url?: string | null;
+  download_url?: string | null;
 };
+
+/*
+ * ============================================================
+ * SUPPORTED BRIEF DOCUMENT TYPES
+ * ============================================================
+ *
+ * These are the document_type values produced by
+ * /api/send-brief.
+ *
+ * "client_brief" is retained for compatibility with
+ * documents created by the older version of the API.
+ */
+
+const SUBMITTED_BRIEF_TYPES = new Set([
+  "kitchen_brief",
+  "wardrobe_brief",
+  "tv_unit_brief",
+  "full_interior_brief",
+  "client_brief",
+]);
+
+function isSubmittedBriefDocument(
+  document: ClientDocument
+) {
+  return SUBMITTED_BRIEF_TYPES.has(
+    document.document_type
+  );
+}
+
+function isFullInteriorBriefDocument(
+  document: ClientDocument
+) {
+  return (
+    document.document_type ===
+      "full_interior_brief" ||
+    document.document_type === "client_brief"
+  );
+}
+
+/*
+ * ============================================================
+ * LOCAL STORAGE HELPERS
+ * ============================================================
+ */
 
 function getBriefStorageKey(clientId: string) {
   return `kbxFullInteriorBrief_${clientId}`;
@@ -51,7 +109,8 @@ function getLegacyBriefStorageKey(clientId: string) {
 
 function readStoredData(key: string) {
   try {
-    const value = localStorage.getItem(key);
+    const value =
+      localStorage.getItem(key);
 
     if (!value) {
       return null;
@@ -63,33 +122,49 @@ function readStoredData(key: string) {
   }
 }
 
+/*
+ * ============================================================
+ * LOCAL BRIEF STATUS
+ * ============================================================
+ */
+
 function hasMeaningfulFormData(form: any) {
-  if (!form || typeof form !== "object") {
+  if (
+    !form ||
+    typeof form !== "object"
+  ) {
     return false;
   }
 
-  return Object.entries(form).some(([key, value]) => {
-    if (key === "confirmation") {
-      return value === true;
-    }
+  return Object.entries(form).some(
+    ([key, value]) => {
+      if (key === "confirmation") {
+        return value === true;
+      }
 
-    if (Array.isArray(value)) {
-      return value.length > 0;
-    }
+      if (Array.isArray(value)) {
+        return value.length > 0;
+      }
 
-    if (typeof value === "string") {
-      return value.trim().length > 0;
-    }
+      if (typeof value === "string") {
+        return value.trim().length > 0;
+      }
 
-    if (typeof value === "boolean") {
-      return value;
-    }
+      if (typeof value === "boolean") {
+        return value;
+      }
 
-    return value !== null && value !== undefined;
-  });
+      return (
+        value !== null &&
+        value !== undefined
+      );
+    }
+  );
 }
 
-function getBriefStatus(brief: any): BriefStatus {
+function getBriefStatus(
+  brief: any
+): BriefStatus {
   if (!brief) {
     return "not-started";
   }
@@ -101,72 +176,175 @@ function getBriefStatus(brief: any): BriefStatus {
     return "completed";
   }
 
-  if (hasMeaningfulFormData(brief.form)) {
+  if (
+    hasMeaningfulFormData(
+      brief.form
+    )
+  ) {
     return "in-progress";
   }
 
   return "not-started";
 }
 
-function formatDocumentDate(dateString: string) {
+/*
+ * ============================================================
+ * DOCUMENT DATE
+ * ============================================================
+ */
+
+function formatDocumentDate(
+  dateString: string
+) {
   try {
-    return new Intl.DateTimeFormat("en-GH", {
-      day: "numeric",
-      month: "long",
-      year: "numeric",
-    }).format(new Date(dateString));
+    return new Intl.DateTimeFormat(
+      "en-GH",
+      {
+        day: "numeric",
+        month: "long",
+        year: "numeric",
+      }
+    ).format(
+      new Date(dateString)
+    );
   } catch {
     return "Date unavailable";
   }
 }
 
+/*
+ * ============================================================
+ * DOCUMENT TYPE LABEL
+ * ============================================================
+ */
+
+function getDocumentTypeLabel(
+  documentType: string
+) {
+  switch (documentType) {
+    case "kitchen_brief":
+      return "Kitchen Brief";
+
+    case "wardrobe_brief":
+      return "Wardrobe Brief";
+
+    case "tv_unit_brief":
+      return "TV Unit Brief";
+
+    case "full_interior_brief":
+      return "Full Interior Brief";
+
+    case "client_brief":
+      return "Client Brief";
+
+    default:
+      return "Project Document";
+  }
+}
+
+/*
+ * ============================================================
+ * PAGE
+ * ============================================================
+ */
+
 export default function ClientPortal() {
-  const [client, setClient] = useState<ClientAccount>({
-    id: "",
-    name: "",
-    email: "",
-    contact: "",
-  });
+  const [client, setClient] =
+    useState<ClientAccount>({
+      id: "",
+      name: "",
+      email: "",
+      contact: "",
+    });
 
-  const [isLoaded, setIsLoaded] = useState(false);
+  const [isLoaded, setIsLoaded] =
+    useState(false);
 
-  const [fullInteriorStatus, setFullInteriorStatus] =
-    useState<BriefStatus>("not-started");
+  /*
+   * ==========================================================
+   * FULL INTERIOR LOCAL STATUS
+   * ==========================================================
+   */
 
-  const [fullInteriorBrief, setFullInteriorBrief] =
+  const [
+    fullInteriorStatus,
+    setFullInteriorStatus,
+  ] =
+    useState<BriefStatus>(
+      "not-started"
+    );
+
+  const [
+    fullInteriorBrief,
+    setFullInteriorBrief,
+  ] =
     useState<any>(null);
 
   /*
-   * SERVER COMPLETION STATE
+   * ==========================================================
+   * SERVER COMPLETION
+   * ==========================================================
    *
-   * Supabase becomes the authoritative source
-   * once the submitted Full Interior Brief PDF
-   * exists in client_documents.
+   * Supabase-backed documents are authoritative.
    */
-  const [serverBriefCompleted, setServerBriefCompleted] =
-    useState(false);
+
+  const [
+    serverBriefCompleted,
+    setServerBriefCompleted,
+  ] = useState(false);
+
+  const [
+    serverFullInteriorCompleted,
+    setServerFullInteriorCompleted,
+  ] = useState(false);
 
   /*
+   * ==========================================================
    * DOCUMENT STATE
+   * ==========================================================
    */
 
-  const [documents, setDocuments] =
-    useState<ClientDocument[]>([]);
+  const [
+    documents,
+    setDocuments,
+  ] =
+    useState<ClientDocument[]>(
+      []
+    );
 
-  const [documentsLoading, setDocumentsLoading] =
+  const [
+    documentsLoading,
+    setDocumentsLoading,
+  ] =
     useState(false);
 
-  const [documentsError, setDocumentsError] =
-    useState("");
+  const [
+    documentsError,
+    setDocumentsError,
+  ] = useState("");
 
-  const [selectedDocument, setSelectedDocument] =
-    useState<ClientDocument | null>(null);
+  const [
+    selectedDocument,
+    setSelectedDocument,
+  ] =
+    useState<ClientDocument | null>(
+      null
+    );
 
-  const [documentViewerOpen, setDocumentViewerOpen] =
-    useState(false);
+  const [
+    documentViewerOpen,
+    setDocumentViewerOpen,
+  ] = useState(false);
 
   /*
+   * ==========================================================
    * LOAD CLIENT
+   * ==========================================================
+   *
+   * This keeps the current authentication/account mechanism
+   * intact for now.
+   *
+   * Supabase Auth migration will be handled separately.
    */
 
   useEffect(() => {
@@ -182,14 +360,19 @@ export default function ClientPortal() {
             CLIENT_ACCOUNTS_KEY
           );
 
-        let accounts: ClientAccount[] = [];
+        let accounts: ClientAccount[] =
+          [];
 
         if (accountsRaw) {
           try {
             const parsed =
-              JSON.parse(accountsRaw);
+              JSON.parse(
+                accountsRaw
+              );
 
-            if (Array.isArray(parsed)) {
+            if (
+              Array.isArray(parsed)
+            ) {
               accounts = parsed;
             }
           } catch {
@@ -197,21 +380,34 @@ export default function ClientPortal() {
           }
         }
 
+        /*
+         * CURRENT ACCOUNT
+         */
+
         if (currentClientId) {
-          const account = accounts.find(
-            (item) =>
-              item.id === currentClientId
-          );
+          const account =
+            accounts.find(
+              (item) =>
+                item.id ===
+                currentClientId
+            );
 
           if (account) {
             setClient({
               id: account.id,
-              name: account.name || "",
-              email: account.email || "",
-              contact: account.contact || "",
+              name:
+                account.name ||
+                "",
+              email:
+                account.email ||
+                "",
+              contact:
+                account.contact ||
+                "",
             });
 
             setIsLoaded(true);
+
             return;
           }
         }
@@ -225,12 +421,18 @@ export default function ClientPortal() {
             LEGACY_CLIENT_KEY
           );
 
-        if (legacy && legacy.id) {
+        if (
+          legacy &&
+          legacy.id
+        ) {
           setClient({
             id: legacy.id,
-            name: legacy.name || "",
-            email: legacy.email || "",
-            contact: legacy.contact || "",
+            name:
+              legacy.name || "",
+            email:
+              legacy.email || "",
+            contact:
+              legacy.contact || "",
           });
         }
       } catch (error) {
@@ -247,39 +449,35 @@ export default function ClientPortal() {
   }, []);
 
   /*
-   * LOAD LOCAL BRIEF DRAFT
+   * ==========================================================
+   * LOAD LOCAL FULL INTERIOR DRAFT
+   * ==========================================================
    *
-   * LocalStorage is only used for draft /
-   * in-progress information.
+   * LocalStorage is only a draft/provisional source.
    *
-   * IMPORTANT:
-   *
-   * There is NO setInterval here.
-   *
-   * Previously, a 1-second polling interval
-   * could read the local draft and change:
-   *
-   * COMPLETED -> IN PROGRESS
-   *
-   * after Supabase had already confirmed
-   * the submission.
+   * Supabase document completion always takes priority.
    */
 
   useEffect(() => {
-    if (!isLoaded || !client.id) {
+    if (
+      !isLoaded ||
+      !client.id
+    ) {
       return;
     }
 
     function loadLocalBrief() {
       let brief =
         readStoredData(
-          getBriefStorageKey(client.id)
+          getBriefStorageKey(
+            client.id
+          )
         );
 
       /*
-       * Check legacy storage key if the
-       * current key is empty.
+       * Legacy key fallback
        */
+
       if (!brief) {
         brief =
           readStoredData(
@@ -289,15 +487,22 @@ export default function ClientPortal() {
           );
       }
 
-      setFullInteriorBrief(brief);
+      setFullInteriorBrief(
+        brief
+      );
 
       /*
-       * Do not allow localStorage to overwrite
+       * Never allow localStorage to downgrade
        * a server-confirmed completed state.
        */
-      if (!serverBriefCompleted) {
+
+      if (
+        !serverBriefCompleted
+      ) {
         setFullInteriorStatus(
-          getBriefStatus(brief)
+          getBriefStatus(
+            brief
+          )
         );
       }
     }
@@ -322,179 +527,264 @@ export default function ClientPortal() {
   ]);
 
   /*
-   * LOAD SAVED CLIENT DOCUMENTS
-   */
-
-  async function loadDocuments(
-    clientId: string
-  ) {
-    if (!clientId) {
-      return;
-    }
-
-    setDocumentsLoading(true);
-    setDocumentsError("");
-
-    try {
-      const apiUrl =
-        `/api/client-documents?clientId=${encodeURIComponent(
-          clientId
-        )}`;
-
-      const response =
-        await fetch(apiUrl, {
-          method: "GET",
-          cache: "no-store",
-          headers: {
-            Accept: "application/json",
-          },
-        });
-
-      /*
-       * Read text first so an HTML error page
-       * does not cause an unhelpful JSON error.
-       */
-      const responseText =
-        await response.text();
-
-      let result: any = null;
-
-      try {
-        result =
-          responseText
-            ? JSON.parse(responseText)
-            : null;
-      } catch {
-        console.error(
-          "Client documents API returned non-JSON:",
-          responseText.substring(0, 500)
-        );
-
-        throw new Error(
-          `The document service returned an invalid response (HTTP ${response.status}).`
-        );
-      }
-
-      if (!response.ok) {
-        throw new Error(
-          result?.error ||
-            `Unable to load project documents. HTTP ${response.status}.`
-        );
-      }
-
-      if (
-        !result ||
-        result.success !== true
-      ) {
-        throw new Error(
-          result?.error ||
-            "The document service did not return a valid result."
-        );
-      }
-
-      const loadedDocuments =
-        Array.isArray(result.documents)
-          ? result.documents
-          : [];
-
-      setDocuments(
-        loadedDocuments
-      );
-
-      /*
-       * ========================================================
-       * SERVER COMPLETION CHECK
-       * ========================================================
-       *
-       * The existence of a document with
-       * document_type = full_interior_brief
-       * proves that the submission was successfully
-       * processed and stored.
-       */
-
-      const completedBriefDocument =
-        loadedDocuments.find(
-          (document: ClientDocument) =>
-            document.document_type ===
-            "full_interior_brief"
-        );
-
-      if (completedBriefDocument) {
-        /*
-         * Supabase confirms completion.
-         */
-        setServerBriefCompleted(true);
-        setFullInteriorStatus(
-          "completed"
-        );
-      } else {
-        /*
-         * No completed server document.
-         *
-         * LocalStorage can therefore provide
-         * the provisional draft status.
-         */
-        setServerBriefCompleted(false);
-
-        setFullInteriorStatus(
-          getBriefStatus(
-            fullInteriorBrief
-          )
-        );
-      }
-    } catch (error) {
-      console.error(
-        "Unable to load client documents:",
-        error
-      );
-
-      setDocumentsError(
-        error instanceof Error
-          ? error.message
-          : "Unable to load project documents."
-      );
-    } finally {
-      setDocumentsLoading(false);
-    }
-  }
-
-  /*
-   * LOAD DOCUMENTS AFTER CLIENT LOADS
-   */
-
-  useEffect(() => {
-    if (!isLoaded || !client.id) {
-      return;
-    }
-
-    loadDocuments(client.id);
-  }, [isLoaded, client.id]);
-
-  /*
-   * KEEP COMPLETION SYNCHRONIZED
+   * ==========================================================
+   * LOAD CLIENT DOCUMENTS
+   * ==========================================================
    *
-   * If documents are updated, immediately
-   * check for the completed Full Interior Brief.
+   * useCallback prevents the function from being recreated
+   * on every render and fixes the React effect dependency
+   * problem.
+   */
+
+  const loadDocuments =
+    useCallback(
+      async (
+        clientId: string
+      ) => {
+        if (!clientId) {
+          return;
+        }
+
+        setDocumentsLoading(
+          true
+        );
+
+        setDocumentsError("");
+
+        try {
+          const apiUrl =
+            `/api/client-documents?clientId=${encodeURIComponent(
+              clientId
+            )}`;
+
+          const response =
+            await fetch(
+              apiUrl,
+              {
+                method: "GET",
+                cache: "no-store",
+                headers: {
+                  Accept:
+                    "application/json",
+                },
+              }
+            );
+
+          /*
+           * Read text first so HTML errors do not
+           * produce misleading JSON parsing errors.
+           */
+
+          const responseText =
+            await response.text();
+
+          let result: any =
+            null;
+
+          try {
+            result =
+              responseText
+                ? JSON.parse(
+                    responseText
+                  )
+                : null;
+          } catch {
+            console.error(
+              "Client documents API returned non-JSON:",
+              responseText.substring(
+                0,
+                500
+              )
+            );
+
+            throw new Error(
+              `The document service returned an invalid response (HTTP ${response.status}).`
+            );
+          }
+
+          if (!response.ok) {
+            throw new Error(
+              result?.error ||
+                `Unable to load project documents. HTTP ${response.status}.`
+            );
+          }
+
+          if (
+            !result ||
+            result.success !==
+              true
+          ) {
+            throw new Error(
+              result?.error ||
+                "The document service did not return a valid result."
+            );
+          }
+
+          const loadedDocuments =
+            Array.isArray(
+              result.documents
+            )
+              ? result.documents
+              : [];
+
+          setDocuments(
+            loadedDocuments
+          );
+
+          /*
+           * ====================================================
+           * SERVER BRIEF COMPLETION
+           * ====================================================
+           *
+           * Any recognized submitted brief means the
+           * Client Brief stage has been completed.
+           */
+
+          const submittedBrief =
+            loadedDocuments.find(
+              (
+                document: ClientDocument
+              ) =>
+                isSubmittedBriefDocument(
+                  document
+                )
+            );
+
+          if (
+            submittedBrief
+          ) {
+            setServerBriefCompleted(
+              true
+            );
+
+            setFullInteriorStatus(
+              "completed"
+            );
+          } else {
+            setServerBriefCompleted(
+              false
+            );
+
+            /*
+             * If no server document exists,
+             * use the local Full Interior draft.
+             */
+
+            setFullInteriorStatus(
+              getBriefStatus(
+                fullInteriorBrief
+              )
+            );
+          }
+
+          /*
+           * Specifically check whether the Full Interior
+           * Brief has been saved.
+           */
+
+          const fullInteriorDocument =
+            loadedDocuments.find(
+              (
+                document: ClientDocument
+              ) =>
+                isFullInteriorBriefDocument(
+                  document
+                )
+            );
+
+          setServerFullInteriorCompleted(
+            Boolean(
+              fullInteriorDocument
+            )
+          );
+        } catch (error) {
+          console.error(
+            "Unable to load client documents:",
+            error
+          );
+
+          setDocumentsError(
+            error instanceof
+              Error
+              ? error.message
+              : "Unable to load project documents."
+          );
+        } finally {
+          setDocumentsLoading(
+            false
+          );
+        }
+      },
+      [fullInteriorBrief]
+    );
+
+  /*
+   * ==========================================================
+   * LOAD DOCUMENTS AFTER CLIENT LOADS
+   * ==========================================================
    */
 
   useEffect(() => {
-    const completedBriefDocument =
+    if (
+      !isLoaded ||
+      !client.id
+    ) {
+      return;
+    }
+
+    loadDocuments(
+      client.id
+    );
+  }, [
+    isLoaded,
+    client.id,
+    loadDocuments,
+  ]);
+
+  /*
+   * ==========================================================
+   * KEEP SERVER COMPLETION SYNCHRONIZED
+   * ==========================================================
+   */
+
+  useEffect(() => {
+    const submittedBrief =
       documents.find(
         (document) =>
-          document.document_type ===
-          "full_interior_brief"
+          isSubmittedBriefDocument(
+            document
+          )
       );
 
-    if (completedBriefDocument) {
-      setServerBriefCompleted(true);
+    const fullInteriorDocument =
+      documents.find(
+        (document) =>
+          isFullInteriorBriefDocument(
+            document
+          )
+      );
+
+    if (submittedBrief) {
+      setServerBriefCompleted(
+        true
+      );
+
       setFullInteriorStatus(
         "completed"
       );
     }
+
+    setServerFullInteriorCompleted(
+      Boolean(
+        fullInteriorDocument
+      )
+    );
   }, [documents]);
 
   /*
+   * ==========================================================
    * DOCUMENT VIEWER
+   * ==========================================================
    */
 
   function openDocument(
@@ -508,23 +798,35 @@ export default function ClientPortal() {
       return;
     }
 
-    setSelectedDocument(doc);
-    setDocumentViewerOpen(true);
+    setSelectedDocument(
+      doc
+    );
+
+    setDocumentViewerOpen(
+      true
+    );
 
     window.document.body.style.overflow =
       "hidden";
   }
 
   function closeDocument() {
-    setDocumentViewerOpen(false);
-    setSelectedDocument(null);
+    setDocumentViewerOpen(
+      false
+    );
+
+    setSelectedDocument(
+      null
+    );
 
     window.document.body.style.overflow =
       "";
   }
 
   /*
-   * CLOSE VIEWER WITH ESCAPE
+   * ==========================================================
+   * ESCAPE KEY
+   * ==========================================================
    */
 
   useEffect(() => {
@@ -532,7 +834,8 @@ export default function ClientPortal() {
       event: KeyboardEvent
     ) {
       if (
-        event.key === "Escape" &&
+        event.key ===
+          "Escape" &&
         documentViewerOpen
       ) {
         closeDocument();
@@ -550,10 +853,14 @@ export default function ClientPortal() {
         handleKeyDown
       );
     };
-  }, [documentViewerOpen]);
+  }, [
+    documentViewerOpen,
+  ]);
 
   /*
+   * ==========================================================
    * INITIALS
+   * ==========================================================
    */
 
   const getInitials = (
@@ -564,9 +871,13 @@ export default function ClientPortal() {
     }
 
     const words =
-      name.trim().split(/\s+/);
+      name
+        .trim()
+        .split(/\s+/);
 
-    if (words.length === 1) {
+    if (
+      words.length === 1
+    ) {
       return words[0]
         .charAt(0)
         .toUpperCase();
@@ -581,10 +892,14 @@ export default function ClientPortal() {
   };
 
   const initials =
-    getInitials(client.name);
+    getInitials(
+      client.name
+    );
 
   /*
+   * ==========================================================
    * BRIEF STATUS
+   * ==========================================================
    */
 
   const fullInteriorCompleted =
@@ -596,15 +911,37 @@ export default function ClientPortal() {
     "in-progress";
 
   /*
-   * DATABASE COMPLETION CHECK
+   * ==========================================================
+   * SUBMITTED DOCUMENTS
+   * ==========================================================
+   */
+
+  const submittedBriefDocuments =
+    documents.filter(
+      (document) =>
+        isSubmittedBriefDocument(
+          document
+        )
+    );
+
+  /*
+   * ==========================================================
+   * FULL INTERIOR DOCUMENT
+   * ==========================================================
    */
 
   const completedBriefDocument =
     documents.find(
       (document) =>
-        document.document_type ===
-        "full_interior_brief"
+        isFullInteriorBriefDocument(
+          document
+        )
     );
+
+  /*
+   * This indicator specifically means the
+   * Full Interior Brief has been saved.
+   */
 
   const briefSavedToPortal =
     Boolean(
@@ -612,10 +949,12 @@ export default function ClientPortal() {
     );
 
   /*
+   * ==========================================================
    * PDF PROCESSING INFORMATION
+   * ==========================================================
    *
-   * Informational values from the locally
-   * stored submission response.
+   * These values are retained for compatibility with
+   * the existing local submission response.
    */
 
   const pdfGenerated =
@@ -638,13 +977,16 @@ export default function ClientPortal() {
     emailedToClient;
 
   /*
-   * PROJECT PROGRESS
+   * ==========================================================
+   * CLIENT BRIEF COMPLETION
+   * ==========================================================
    *
-   * SERVER COMPLETION TAKES PRIORITY.
+   * Server confirmation takes priority.
    *
-   * This guarantees that the Client Brief
-   * stays completed once Supabase has confirmed
-   * the document.
+   * This is the important change:
+   *
+   * A successfully stored brief PDF means the
+   * Client Brief stage is complete.
    */
 
   const clientBriefCompleted =
@@ -652,17 +994,26 @@ export default function ClientPortal() {
     fullInteriorStatus ===
       "completed";
 
+  /*
+   * ==========================================================
+   * PROJECT PROGRESS
+   * ==========================================================
+   */
+
   const completedStageCount =
     clientBriefCompleted
       ? 2
       : 1;
 
   const progressPercentage =
-    (completedStageCount / 9) *
+    (completedStageCount /
+      9) *
     100;
 
   /*
+   * ==========================================================
    * BRIEF LABEL
+   * ==========================================================
    */
 
   function getBriefLabel() {
@@ -698,7 +1049,9 @@ export default function ClientPortal() {
   }
 
   /*
+   * ==========================================================
    * PROJECT STAGES
+   * ==========================================================
    */
 
   const projectStages = [
@@ -741,35 +1094,35 @@ export default function ClientPortal() {
   ];
 
   /*
+   * ==========================================================
    * LOADING
+   * ==========================================================
    */
 
   if (!isLoaded) {
     return (
       <main className="flex min-h-screen items-center justify-center bg-[#f7f7f5]">
         <div className="text-center">
-
           <div className="mx-auto h-8 w-8 animate-spin rounded-full border-2 border-black/10 border-t-black" />
 
           <p className="mt-4 text-xs text-black/40">
             Loading your client portal...
           </p>
-
         </div>
       </main>
     );
   }
 
   /*
+   * ==========================================================
    * NO CLIENT
+   * ==========================================================
    */
 
   if (!client.id) {
     return (
       <main className="flex min-h-screen items-center justify-center bg-[#f7f7f5] px-5">
-
         <div className="w-full max-w-md rounded-3xl border border-black/10 bg-white p-8 text-center shadow-sm">
-
           <div className="mx-auto flex h-14 w-14 items-center justify-center rounded-full bg-black text-sm font-semibold text-white">
             KBX
           </div>
@@ -779,9 +1132,10 @@ export default function ClientPortal() {
           </h1>
 
           <p className="mt-3 text-sm leading-6 text-black/45">
-            Please create or log in to your
-            client profile before accessing
-            the project portal.
+            Please create or log in
+            to your client profile
+            before accessing the
+            project portal.
           </p>
 
           <Link
@@ -793,33 +1147,32 @@ export default function ClientPortal() {
           >
             Go to Client Profile →
           </Link>
-
         </div>
-
       </main>
     );
   }
 
+  /*
+   * ==========================================================
+   * MAIN PORTAL
+   * ==========================================================
+   */
+
   return (
     <main className="min-h-screen bg-[#f7f7f5] text-black">
 
-      {/* =========================================================
+      {/* =======================================================
           HEADER
-      ========================================================= */}
+      ======================================================= */}
 
       <header className="sticky top-0 z-50 border-b border-black/10 bg-[#f7f7f5]/95 backdrop-blur-xl">
-
         <div className="mx-auto flex h-[100px] max-w-[1400px] items-center justify-between px-5 md:px-8">
-
-          {/* LOGO + BRAND */}
 
           <Link
             href="/"
             className="flex items-center"
           >
-
             <div className="relative h-[64px] w-[130px] shrink-0 sm:h-[70px] sm:w-[140px]">
-
               <Image
                 src="/kbx-logo.svg"
                 alt="KBX Spatial Atelier"
@@ -828,11 +1181,9 @@ export default function ClientPortal() {
                 sizes="140px"
                 className="object-contain object-left"
               />
-
             </div>
 
             <div className="ml-2 hidden leading-none sm:block">
-
               <p className="text-sm font-semibold tracking-tight">
                 KBX Spatial Atelier
               </p>
@@ -840,17 +1191,11 @@ export default function ClientPortal() {
               <p className="mt-[6px] text-[10px] uppercase tracking-[0.2em] text-black/45">
                 Client Portal
               </p>
-
             </div>
-
           </Link>
 
-          {/* CLIENT PROFILE */}
-
           <div className="flex items-center gap-3">
-
             <div className="hidden text-right sm:block">
-
               <p className="text-sm font-semibold">
                 {client.name ||
                   "Client"}
@@ -859,7 +1204,6 @@ export default function ClientPortal() {
               <p className="text-[10px] text-black/40">
                 Active profile
               </p>
-
             </div>
 
             <div
@@ -870,27 +1214,23 @@ export default function ClientPortal() {
             >
               {initials}
             </div>
-
           </div>
 
         </div>
-
       </header>
 
-      {/* =========================================================
+      {/* =======================================================
           MAIN
-      ========================================================= */}
+      ======================================================= */}
 
       <section className="px-5 py-10 md:px-8 md:py-16">
-
         <div className="mx-auto max-w-[1200px]">
 
-          {/* =====================================================
+          {/* ===================================================
               WELCOME
-          ===================================================== */}
+          =================================================== */}
 
           <div className="mb-10">
-
             <p
               className="text-xs font-semibold uppercase tracking-[0.2em]"
               style={{
@@ -901,37 +1241,32 @@ export default function ClientPortal() {
             </p>
 
             <h1 className="mt-3 text-3xl font-semibold tracking-[-0.03em] md:text-5xl">
-
               Welcome,
-
               <br className="hidden md:block" />
-
               {client.name ||
                 "Client"}.
-
             </h1>
 
             <p className="mt-4 max-w-2xl text-sm leading-6 text-black/45">
-              Manage your project information,
-              complete your design brief, and
-              follow the progress of your project
-              with KBX Spatial Atelier.
+              Manage your project
+              information, complete
+              your design brief, and
+              follow the progress of
+              your project with KBX
+              Spatial Atelier.
             </p>
-
           </div>
 
-          {/* =====================================================
+          {/* ===================================================
               TOP CARDS
-          ===================================================== */}
+          =================================================== */}
 
           <div className="grid gap-5 md:grid-cols-3">
 
             {/* CLIENT PROFILE */}
 
             <div className="rounded-2xl border border-black/10 bg-white p-6">
-
               <div className="flex items-center justify-between">
-
                 <div className="flex h-11 w-11 items-center justify-center rounded-full bg-black text-white">
                   ◉
                 </div>
@@ -939,7 +1274,6 @@ export default function ClientPortal() {
                 <span className="rounded-full bg-black/5 px-3 py-1 text-[10px] font-medium uppercase tracking-wider text-black/45">
                   Profile
                 </span>
-
               </div>
 
               <h2 className="mt-6 text-lg font-semibold">
@@ -949,7 +1283,6 @@ export default function ClientPortal() {
               <div className="mt-5 space-y-4">
 
                 <div>
-
                   <p className="text-[10px] uppercase tracking-wider text-black/35">
                     Full name
                   </p>
@@ -958,11 +1291,9 @@ export default function ClientPortal() {
                     {client.name ||
                       "—"}
                   </p>
-
                 </div>
 
                 <div>
-
                   <p className="text-[10px] uppercase tracking-wider text-black/35">
                     Email address
                   </p>
@@ -971,11 +1302,9 @@ export default function ClientPortal() {
                     {client.email ||
                       "—"}
                   </p>
-
                 </div>
 
                 <div>
-
                   <p className="text-[10px] uppercase tracking-wider text-black/35">
                     WhatsApp / Contact
                   </p>
@@ -984,13 +1313,11 @@ export default function ClientPortal() {
                     {client.contact ||
                       "—"}
                   </p>
-
                 </div>
 
               </div>
 
               <div className="mt-6 border-t border-black/10 pt-5">
-
                 <div className="flex items-center justify-between">
 
                   <p className="text-xs text-black/40">
@@ -998,24 +1325,18 @@ export default function ClientPortal() {
                   </p>
 
                   <div className="flex items-center gap-2">
-
                     <span className="h-2 w-2 rounded-full bg-green-600" />
 
                     <p className="text-xs font-medium text-green-700">
                       Active
                     </p>
-
                   </div>
 
                 </div>
-
               </div>
-
             </div>
 
-            {/* =================================================
-                CLIENT BRIEF
-                ================================================= */}
+            {/* CLIENT BRIEF */}
 
             <Link
               href="/client-brief-project-type"
@@ -1080,9 +1401,10 @@ export default function ClientPortal() {
               </h2>
 
               <p className="mt-2 text-sm leading-5 text-black/45">
-                Tell us about your project,
-                requirements, preferences, and
-                design vision.
+                Tell us about your
+                project, requirements,
+                preferences, and design
+                vision.
               </p>
 
               <div className="mt-6 flex items-center justify-between border-t border-black/10 pt-5">
@@ -1140,8 +1462,10 @@ export default function ClientPortal() {
               </h2>
 
               <p className="mt-2 text-sm leading-5 text-black/45">
-                Follow each stage of your project
-                from consultation to installation.
+                Follow each stage of your
+                project from
+                consultation to
+                installation.
               </p>
 
               <div className="mt-6 border-t border-black/10 pt-5">
@@ -1174,9 +1498,9 @@ export default function ClientPortal() {
 
           </div>
 
-          {/* =====================================================
+          {/* ===================================================
               PROJECT JOURNEY
-          ===================================================== */}
+          =================================================== */}
 
           <div className="mt-8 rounded-3xl border border-black/10 bg-white p-6 md:p-8">
 
@@ -1198,16 +1522,19 @@ export default function ClientPortal() {
                 </h2>
 
                 <p className="mt-2 max-w-xl text-sm leading-6 text-black/45">
-                  Your project will move through
-                  the following stages. Completed
-                  stages will become available as
-                  the project progresses.
+                  Your project will move
+                  through the following
+                  stages. Completed
+                  stages will become
+                  available as the
+                  project progresses.
                 </p>
 
               </div>
 
               <div className="rounded-full bg-[#f7f7f5] px-4 py-2 text-xs font-medium text-black/50">
-                {completedStageCount} of 9 stages
+                {completedStageCount} of 9
+                stages
               </div>
 
             </div>
@@ -1336,9 +1663,9 @@ export default function ClientPortal() {
 
           </div>
 
-          {/* =====================================================
+          {/* ===================================================
               DOCUMENTS + HELP
-          ===================================================== */}
+          =================================================== */}
 
           <div className="mt-8 grid gap-5 md:grid-cols-2">
 
@@ -1364,9 +1691,10 @@ export default function ClientPortal() {
                   </h2>
 
                   <p className="mt-2 text-sm leading-6 text-black/45">
-                    Your project documents and
-                    approved files will appear here
-                    as your project develops.
+                    Your project documents
+                    and approved files will
+                    appear here as your
+                    project develops.
                   </p>
 
                 </div>
@@ -1390,7 +1718,9 @@ export default function ClientPortal() {
 
               </div>
 
-              {/* SAVED SUCCESS INDICATOR */}
+              {/* ================================================
+                  SAVED FULL INTERIOR SUCCESS
+              ================================================= */}
 
               {briefSavedToPortal && (
                 <div className="mt-6 flex items-center gap-3 rounded-xl border border-green-600/20 bg-green-50 p-4">
@@ -1402,12 +1732,14 @@ export default function ClientPortal() {
                   <div>
 
                     <p className="text-sm font-semibold text-green-800">
-                      Full Interior Brief saved
+                      Full Interior Brief
+                      saved
                     </p>
 
                     <p className="mt-1 text-xs leading-5 text-green-700">
-                      Your submitted brief is safely
-                      stored in your project documents.
+                      Your submitted brief is
+                      safely stored in your
+                      project documents.
                     </p>
 
                   </div>
@@ -1415,7 +1747,9 @@ export default function ClientPortal() {
                 </div>
               )}
 
-              {/* DOCUMENT API ERROR */}
+              {/* ================================================
+                  DOCUMENT API ERROR
+              ================================================= */}
 
               {documentsError && (
                 <div className="mt-6 rounded-xl border border-[#910B0A]/20 bg-[#910B0A]/5 p-5">
@@ -1452,11 +1786,14 @@ export default function ClientPortal() {
                 </div>
               )}
 
-              {/* DOCUMENT LOADING */}
+              {/* ================================================
+                  DOCUMENT LOADING
+              ================================================= */}
 
               {!documentsError &&
                 documentsLoading &&
-                documents.length === 0 && (
+                documents.length ===
+                  0 && (
                   <div className="mt-6 rounded-xl border border-black/10 bg-[#f7f7f5] p-6">
 
                     <div className="flex items-center gap-4">
@@ -1470,7 +1807,8 @@ export default function ClientPortal() {
                         </p>
 
                         <p className="mt-1 text-xs text-black/40">
-                          Checking your project files...
+                          Checking your project
+                          files...
                         </p>
 
                       </div>
@@ -1480,10 +1818,13 @@ export default function ClientPortal() {
                   </div>
                 )}
 
-              {/* SAVED DOCUMENTS */}
+              {/* ================================================
+                  SAVED DOCUMENTS
+              ================================================= */}
 
               {!documentsError &&
-                documents.length > 0 && (
+                documents.length >
+                  0 && (
 
                   <div className="mt-6 space-y-3">
 
@@ -1502,7 +1843,9 @@ export default function ClientPortal() {
 
                         return (
                           <div
-                            key={doc.id}
+                            key={
+                              doc.id
+                            }
                             className="group rounded-xl border border-black/10 bg-[#f7f7f5] p-4 transition hover:border-black/20 hover:bg-white"
                           >
 
@@ -1514,11 +1857,23 @@ export default function ClientPortal() {
 
                               <div className="min-w-0 flex-1">
 
-                                <p className="break-words text-sm font-semibold">
-                                  {
-                                    doc.document_name
-                                  }
-                                </p>
+                                <div className="flex flex-wrap items-center gap-2">
+
+                                  <p className="break-words text-sm font-semibold">
+                                    {
+                                      doc.document_name
+                                    }
+                                  </p>
+
+                                  <span className="rounded-full bg-black/5 px-2 py-1 text-[9px] font-semibold uppercase tracking-wider text-black/40">
+                                    {
+                                      getDocumentTypeLabel(
+                                        doc.document_type
+                                      )
+                                    }
+                                  </span>
+
+                                </div>
 
                                 {doc.project_name && (
                                   <p className="mt-1 truncate text-xs text-black/45">
@@ -1564,7 +1919,8 @@ export default function ClientPortal() {
                               {hasDownloadUrl ? (
                                 <a
                                   href={
-                                    doc.download_url
+                                    doc.download_url ||
+                                    "#"
                                   }
                                   target="_blank"
                                   rel="noopener noreferrer"
@@ -1588,11 +1944,14 @@ export default function ClientPortal() {
                   </div>
                 )}
 
-              {/* NO DOCUMENTS */}
+              {/* ================================================
+                  NO DOCUMENTS
+              ================================================= */}
 
               {!documentsError &&
                 !documentsLoading &&
-                documents.length === 0 && (
+                documents.length ===
+                  0 && (
 
                   <div className="mt-6 rounded-xl border border-dashed border-black/10 bg-[#f7f7f5] p-5">
 
@@ -1609,10 +1968,12 @@ export default function ClientPortal() {
                         </p>
 
                         <p className="mt-1 text-xs leading-5 text-black/35">
-                          Your Full Interior Brief
-                          Summary PDF will appear here
-                          after your brief has been
-                          successfully submitted.
+                          Your submitted brief
+                          summary PDFs will
+                          appear here after
+                          they have been
+                          successfully
+                          submitted.
                         </p>
 
                       </div>
@@ -1622,9 +1983,12 @@ export default function ClientPortal() {
                   </div>
                 )}
 
-              {/* LOCAL BRIEF PROCESSING INFORMATION */}
+              {/* ================================================
+                  FULL INTERIOR COMPLETED BUT DOCUMENT NOT FOUND
+              ================================================= */}
 
-              {documents.length === 0 &&
+              {documents.length ===
+                0 &&
                 !documentsError &&
                 fullInteriorCompleted &&
                 !briefSavedToPortal && (
@@ -1636,9 +2000,11 @@ export default function ClientPortal() {
                     </p>
 
                     <p className="mt-1 text-xs leading-5 text-yellow-700">
-                      Your brief is marked as completed,
-                      but the document has not yet been
-                      returned by the document service.
+                      Your brief is marked as
+                      completed, but the
+                      document has not yet
+                      been returned by the
+                      document service.
                     </p>
 
                     <button
@@ -1656,7 +2022,12 @@ export default function ClientPortal() {
                   </div>
                 )}
 
-              {documents.length === 0 &&
+              {/* ================================================
+                  FULL INTERIOR IN PROGRESS
+              ================================================= */}
+
+              {documents.length ===
+                0 &&
                 !documentsError &&
                 fullInteriorInProgress && (
 
@@ -1673,8 +2044,9 @@ export default function ClientPortal() {
 
                     <p className="mt-1 text-xs leading-5 text-black/45">
                       Your answers are saved.
-                      Continue your brief whenever
-                      you&apos;re ready.
+                      Continue your brief
+                      whenever you&apos;re
+                      ready.
                     </p>
 
                   </div>
@@ -1684,7 +2056,7 @@ export default function ClientPortal() {
 
             {/* =================================================
                 HELP
-                ================================================= */}
+            ================================================= */}
 
             <div className="rounded-2xl bg-black p-6 text-white">
 
@@ -1702,10 +2074,12 @@ export default function ClientPortal() {
               </h2>
 
               <p className="mt-2 text-sm leading-6 text-white/45">
-                If you have questions about your
-                project or need assistance
-                completing your brief, contact
-                KBX Spatial Atelier.
+                If you have questions
+                about your project or
+                need assistance
+                completing your brief,
+                contact KBX Spatial
+                Atelier.
               </p>
 
               <Link
@@ -1720,12 +2094,11 @@ export default function ClientPortal() {
           </div>
 
         </div>
-
       </section>
 
-      {/* =========================================================
+      {/* =======================================================
           FOOTER
-      ========================================================= */}
+      ======================================================= */}
 
       <footer className="border-t border-black/10 bg-white px-5 py-8 md:px-8">
 
@@ -1758,7 +2131,9 @@ export default function ClientPortal() {
                   </p>
 
                   <p className="mt-[5px] text-[10px] uppercase tracking-[0.18em] text-black/40">
-                    Interior Design • Architecture • Bespoke Space
+                    Interior Design •
+                    Architecture • Bespoke
+                    Space
                   </p>
 
                 </div>
@@ -1766,8 +2141,12 @@ export default function ClientPortal() {
               </div>
 
               <p className="mt-5 max-w-sm text-xs leading-5 text-black/40">
-                Creating thoughtful, sophisticated environments through
-                design, architecture and bespoke spatial solutions.
+                Creating thoughtful,
+                sophisticated
+                environments through
+                design, architecture
+                and bespoke spatial
+                solutions.
               </p>
 
             </div>
@@ -1833,7 +2212,9 @@ export default function ClientPortal() {
             </div>
 
             <p className="mt-4 text-center text-[9px] text-black/25">
-              Website developed by Isaac Otoo, CEO of KBX Spatial Atelier.
+              Website developed by Isaac
+              Otoo, CEO of KBX Spatial
+              Atelier.
             </p>
 
           </div>
@@ -1842,9 +2223,9 @@ export default function ClientPortal() {
 
       </footer>
 
-      {/* =========================================================
+      {/* =======================================================
           PDF DOCUMENT VIEWER MODAL
-      ========================================================= */}
+      ======================================================= */}
 
       {documentViewerOpen &&
         selectedDocument && (
@@ -1946,13 +2327,15 @@ export default function ClientPortal() {
                       </div>
 
                       <h3 className="mt-4 text-lg font-semibold">
-                        Document preview unavailable
+                        Document preview
+                        unavailable
                       </h3>
 
                       <p className="mt-2 text-sm text-black/40">
-                        The document was saved, but
-                        its temporary viewing link
-                        is unavailable.
+                        The document was
+                        saved, but its
+                        viewing link is
+                        unavailable.
                       </p>
 
                     </div>

@@ -166,6 +166,27 @@ function getBriefCode(type: BriefType): string {
   }
 }
 
+function getDocumentType(
+  type: BriefType
+): string {
+  switch (type) {
+    case "kitchen":
+      return "kitchen_brief";
+
+    case "wardrobe":
+      return "wardrobe_brief";
+
+    case "tv_unit":
+      return "tv_unit_brief";
+
+    case "full_interior":
+      return "full_interior_brief";
+
+    default:
+      return "client_brief";
+  }
+}
+
 function safeFilename(value: string): string {
   return (
     value
@@ -192,11 +213,6 @@ function normalizeBriefType(
   ) {
     return explicit;
   }
-
-  /*
-   * Fallback detection for older pages that may not
-   * yet send briefType.
-   */
 
   const form = briefData?.form || {};
 
@@ -747,19 +763,22 @@ function drawFieldGrid(
       }
     }
 
+    const rightLineCount =
+      right
+        ? wrapText(
+            formatValue(
+              right[1]
+            ),
+            current.regular,
+            9,
+            columnWidth
+          ).length
+        : 1;
+
     const maxLines =
       Math.max(
         leftLines.length,
-        right
-          ? wrapText(
-              formatValue(
-                right[1]
-              ),
-              current.regular,
-              9,
-              columnWidth
-            ).length
-          : 1
+        rightLineCount
       );
 
     current.y =
@@ -1410,14 +1429,6 @@ function getSections(
     ];
   }
 
-  /*
-   * FULL INTERIOR
-   *
-   * Render the complete submitted
-   * object so no client answer is
-   * lost if new fields are added.
-   */
-
   return [
     {
       title:
@@ -1734,11 +1745,6 @@ async function buildPDF(
       briefData
     );
 
-  /*
-   * Start detailed content
-   * on a fresh page.
-   */
-
   ctx = addPage(ctx);
 
   const sections =
@@ -1789,10 +1795,6 @@ async function buildPDF(
     sectionNumber++;
   }
 
-  /*
-   * Metadata / submission details.
-   */
-
   ctx =
     drawSectionTitle(
       ctx,
@@ -1829,10 +1831,6 @@ async function buildPDF(
         ],
       ]
     );
-
-  /*
-   * Footer on every page.
-   */
 
   const pages =
     pdf.getPages();
@@ -2082,11 +2080,6 @@ async function appendReferenceImages(
     imageCount++;
   }
 
-  /*
-   * Add footer to all pages,
-   * including reference-image pages.
-   */
-
   const pages =
     pdf.getPages();
 
@@ -2163,11 +2156,6 @@ async function readReferenceImages(
       continue;
     }
 
-    /*
-     * Protect the API from
-     * unnecessarily huge uploads.
-     */
-
     if (
       entry.size >
       5 * 1024 * 1024
@@ -2238,18 +2226,31 @@ async function savePdfToSupabase(
   const clientId =
     getClientId(briefData);
 
+  const clientName =
+    getClientName(
+      briefData
+    );
+
   const clientEmail =
     getClientEmail(
       briefData
     );
 
+  const projectName =
+    getProjectName(
+      briefData
+    );
+
+  /*
+   * Keep the existing client-folder
+   * behaviour so previously generated
+   * documents are not affected.
+   */
   const clientFolder =
     safeFilename(
       clientId ||
         clientEmail ||
-        getClientName(
-          briefData
-        )
+        clientName
     );
 
   const timestamp =
@@ -2305,35 +2306,76 @@ async function savePdfToSupabase(
   }
 
   /*
-   * Create client_documents record.
+   * IMPORTANT:
+   *
+   * This is now the specific brief
+   * type instead of the old generic
+   * "client_brief".
    */
+  const documentType =
+    getDocumentType(
+      type
+    );
 
+  const documentName =
+    `${getBriefLabel(
+      type
+    )} — ${projectName}`;
+
+  /*
+   * Complete client_documents record.
+   *
+   * We intentionally populate both
+   * the newer descriptive columns
+   * and the older/legacy columns
+   * currently present in your table.
+   *
+   * This means existing code will
+   * continue to work while the
+   * document system is being upgraded.
+   */
   const documentPayload = {
     client_id:
       clientId || null,
 
-    title:
-      `${getBriefLabel(type)} — ${getProjectName(
-        briefData
-      )}`,
+    client_name:
+      clientName || null,
+
+    client_email:
+      clientEmail || null,
+
+    project_name:
+      projectName || null,
+
+    document_name:
+      documentName,
 
     document_type:
-      "client_brief",
+      documentType,
 
-    file_url:
-      pdfUrl,
-
-    file_path:
+    storage_path:
       storagePath,
-
-    file_name:
-      filename,
 
     mime_type:
       "application/pdf",
 
+    file_size:
+      pdfBytes.byteLength,
+
     created_at:
       new Date().toISOString(),
+
+    file_name:
+      filename,
+
+    file_path:
+      storagePath,
+
+    file_url:
+      pdfUrl,
+
+    title:
+      documentName,
   };
 
   const {
@@ -2358,9 +2400,21 @@ async function savePdfToSupabase(
 
   return {
     pdfUrl,
+
     pdfPath:
       storagePath,
+
     documentRecord,
+
+    documentType,
+
+    documentName,
+
+    fileName:
+      filename,
+
+    fileSize:
+      pdfBytes.byteLength,
   };
 }
 
@@ -2541,10 +2595,6 @@ export async function POST(
           formData
         );
     } else {
-      /*
-       * Also support JSON requests.
-       */
-
       const body =
         await request.json();
 
@@ -2582,6 +2632,11 @@ export async function POST(
         briefData
       );
 
+    const clientId =
+      getClientId(
+        briefData
+      );
+
     const projectName =
       getProjectName(
         briefData
@@ -2601,6 +2656,18 @@ export async function POST(
     }
 
     /*
+     * Client ID is not required for
+     * PDF generation, but we record
+     * it whenever the current portal
+     * provides one.
+     */
+    if (!clientId) {
+      console.warn(
+        "Brief submitted without a client ID. The document will be stored with a NULL client_id until authentication is upgraded."
+      );
+    }
+
+    /*
      * -------------------------------------------------------
      * GENERATE PDF
      * -------------------------------------------------------
@@ -2611,10 +2678,6 @@ export async function POST(
         briefType,
         briefData
       );
-
-    /*
-     * Add uploaded reference images.
-     */
 
     if (
       referenceImages.length > 0
@@ -2637,7 +2700,7 @@ export async function POST(
 
     /*
      * -------------------------------------------------------
-     * SUPABASE STORAGE
+     * SUPABASE STORAGE + DATABASE
      * -------------------------------------------------------
      */
 
@@ -2669,10 +2732,6 @@ export async function POST(
       new Resend(
         resendApiKey
       );
-
-    /*
-     * Resend recipient handling.
-     */
 
     const allowExternalRecipients =
       process.env
@@ -2765,6 +2824,12 @@ export async function POST(
             briefType
           ),
 
+        documentType:
+          storageResult.documentType,
+
+        documentName:
+          storageResult.documentName,
+
         pdfGenerated: true,
 
         pdfStored: true,
@@ -2778,6 +2843,9 @@ export async function POST(
         pdfFilename:
           filename,
 
+        fileSize:
+          storageResult.fileSize,
+
         documentId:
           storageResult
             .documentRecord
@@ -2789,6 +2857,9 @@ export async function POST(
 
         emailedToClient:
           true,
+
+        clientId:
+          clientId || null,
 
         clientEmail,
 
