@@ -5,6 +5,7 @@ import Link from "next/link";
 import {
   ChangeEvent,
   FormEvent,
+  ReactNode,
   useEffect,
   useMemo,
   useState,
@@ -582,7 +583,7 @@ function Question({
   number?: string;
   title: string;
   description?: string;
-  children: React.ReactNode;
+  children: ReactNode;
   required?: boolean;
 }) {
   return (
@@ -1185,7 +1186,7 @@ export default function WardrobeBriefPage() {
 
               <Question
                 number="02"
-                title="Describe the client's main requirements"
+                title="Describe the client&apos;s main requirements"
                 required
               >
                 <TextArea
@@ -2933,7 +2934,7 @@ export default function WardrobeBriefPage() {
 
                   <span className="text-sm leading-6">
                     I confirm that the information provided above has been
-                    checked and represents the client's current wardrobe
+                    checked and represents the client&apos;s current wardrobe
                     requirements.
 
                     <span
@@ -3049,7 +3050,7 @@ export default function WardrobeBriefPage() {
                 </h2>
 
                 <p className="mt-2 max-w-2xl text-sm leading-6 text-white/45">
-                  Your responses will be securely prepared for KBX's design
+                  Your responses will be securely prepared for KBX&apos;s design
                   process. A project document will be generated from the
                   information submitted.
                 </p>
