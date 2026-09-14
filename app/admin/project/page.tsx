@@ -640,9 +640,9 @@ export default function ProjectManagementPage() {
               </h1>
 
               <p className="mt-3 max-w-2xl text-sm leading-6 text-black/60">
-                Upload final approved project
-                documents and update the client's
-                project journey.
+              Upload final approved project
+documents and update the client&apos;s
+project journey.
               </p>
             </div>
 
@@ -912,11 +912,9 @@ export default function ProjectManagementPage() {
               </h2>
 
               <p className="mt-2 max-w-2xl text-sm leading-6 text-black/55">
-                Upload the final approved document
-                for the client's current stage. The
-                stage will be marked completed and
-                the next stage will automatically
-                become current.
+              Upload the final approved document
+for the client&apos;s current stage. The
+stage will be marked completed and
               </p>
             </div>
 
