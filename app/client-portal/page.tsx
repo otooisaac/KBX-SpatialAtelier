@@ -57,6 +57,28 @@ type ClientDocument = {
 
 /*
  * ============================================================
+ * PROJECT STAGE TYPE
+ * ============================================================
+ */
+
+type ProjectStage = {
+  id: string;
+  client_id: string;
+  stage_number: number;
+  stage_key: string;
+  stage_name: string;
+  status:
+    | "upcoming"
+    | "current"
+    | "completed";
+  document_id?: string | null;
+  completed_at?: string | null;
+  created_at?: string;
+  updated_at?: string;
+};
+
+/*
+ * ============================================================
  * SUPPORTED BRIEF DOCUMENT TYPES
  * ============================================================
  *
@@ -89,7 +111,8 @@ function isFullInteriorBriefDocument(
   return (
     document.document_type ===
       "full_interior_brief" ||
-    document.document_type === "client_brief"
+    document.document_type ===
+      "client_brief"
   );
 }
 
@@ -99,11 +122,15 @@ function isFullInteriorBriefDocument(
  * ============================================================
  */
 
-function getBriefStorageKey(clientId: string) {
+function getBriefStorageKey(
+  clientId: string
+) {
   return `kbxFullInteriorBrief_${clientId}`;
 }
 
-function getLegacyBriefStorageKey(clientId: string) {
+function getLegacyBriefStorageKey(
+  clientId: string
+) {
   return `kbxBrief_fullInterior_${clientId}`;
 }
 
@@ -128,7 +155,9 @@ function readStoredData(key: string) {
  * ============================================================
  */
 
-function hasMeaningfulFormData(form: any) {
+function hasMeaningfulFormData(
+  form: any
+) {
   if (
     !form ||
     typeof form !== "object"
@@ -284,8 +313,6 @@ export default function ClientPortal() {
    * ==========================================================
    * SERVER COMPLETION
    * ==========================================================
-   *
-   * Supabase-backed documents are authoritative.
    */
 
   const [
@@ -300,6 +327,29 @@ export default function ClientPortal() {
 
   /*
    * ==========================================================
+   * PROJECT STAGES
+   * ==========================================================
+   */
+
+  const [
+    projectStages,
+    setProjectStages,
+  ] = useState<ProjectStage[]>(
+    []
+  );
+
+  const [
+    stagesLoading,
+    setStagesLoading,
+  ] = useState(false);
+
+  const [
+    stagesError,
+    setStagesError,
+  ] = useState("");
+
+  /*
+   * ==========================================================
    * DOCUMENT STATE
    * ==========================================================
    */
@@ -308,9 +358,7 @@ export default function ClientPortal() {
     documents,
     setDocuments,
   ] =
-    useState<ClientDocument[]>(
-      []
-    );
+    useState<ClientDocument[]>([]);
 
   const [
     documentsLoading,
@@ -340,11 +388,6 @@ export default function ClientPortal() {
    * ==========================================================
    * LOAD CLIENT
    * ==========================================================
-   *
-   * This keeps the current authentication/account mechanism
-   * intact for now.
-   *
-   * Supabase Auth migration will be handled separately.
    */
 
   useEffect(() => {
@@ -452,10 +495,6 @@ export default function ClientPortal() {
    * ==========================================================
    * LOAD LOCAL FULL INTERIOR DRAFT
    * ==========================================================
-   *
-   * LocalStorage is only a draft/provisional source.
-   *
-   * Supabase document completion always takes priority.
    */
 
   useEffect(() => {
@@ -528,12 +567,141 @@ export default function ClientPortal() {
 
   /*
    * ==========================================================
-   * LOAD CLIENT DOCUMENTS
+   * LOAD PROJECT STAGES
    * ==========================================================
    *
-   * useCallback prevents the function from being recreated
-   * on every render and fixes the React effect dependency
-   * problem.
+   * The project journey is now controlled by the
+   * project_stages table through /api/project-stages.
+   */
+
+  const loadProjectStages =
+    useCallback(
+      async (
+        clientId: string
+      ) => {
+        if (!clientId) {
+          return;
+        }
+
+        setStagesLoading(true);
+        setStagesError("");
+
+        try {
+          const response =
+            await fetch(
+              `/api/project-stages?clientId=${encodeURIComponent(
+                clientId
+              )}`,
+              {
+                method: "GET",
+                cache: "no-store",
+                headers: {
+                  Accept:
+                    "application/json",
+                },
+              }
+            );
+
+          const responseText =
+            await response.text();
+
+          let result: any = null;
+
+          try {
+            result =
+              responseText
+                ? JSON.parse(
+                    responseText
+                  )
+                : null;
+          } catch {
+            console.error(
+              "Project stages API returned non-JSON:",
+              responseText.substring(
+                0,
+                500
+              )
+            );
+
+            throw new Error(
+              `The project stage service returned an invalid response (HTTP ${response.status}).`
+            );
+          }
+
+          if (!response.ok) {
+            throw new Error(
+              result?.error ||
+                `Unable to load project stages. HTTP ${response.status}.`
+            );
+          }
+
+          if (
+            !result ||
+            result.success !==
+              true
+          ) {
+            throw new Error(
+              result?.error ||
+                "The project stage service did not return a valid result."
+            );
+          }
+
+          const loadedStages =
+            Array.isArray(
+              result.stages
+            )
+              ? result.stages
+              : [];
+
+          setProjectStages(
+            loadedStages
+          );
+        } catch (error) {
+          console.error(
+            "Unable to load project stages:",
+            error
+          );
+
+          setStagesError(
+            error instanceof
+              Error
+              ? error.message
+              : "Unable to load project stages."
+          );
+        } finally {
+          setStagesLoading(false);
+        }
+      },
+      []
+    );
+
+  /*
+   * ==========================================================
+   * LOAD PROJECT STAGES AFTER CLIENT LOADS
+   * ==========================================================
+   */
+
+  useEffect(() => {
+    if (
+      !isLoaded ||
+      !client.id
+    ) {
+      return;
+    }
+
+    loadProjectStages(
+      client.id
+    );
+  }, [
+    isLoaded,
+    client.id,
+    loadProjectStages,
+  ]);
+
+  /*
+   * ==========================================================
+   * LOAD CLIENT DOCUMENTS
+   * ==========================================================
    */
 
   const loadDocuments =
@@ -632,12 +800,7 @@ export default function ClientPortal() {
           );
 
           /*
-           * ====================================================
            * SERVER BRIEF COMPLETION
-           * ====================================================
-           *
-           * Any recognized submitted brief means the
-           * Client Brief stage has been completed.
            */
 
           const submittedBrief =
@@ -665,11 +828,6 @@ export default function ClientPortal() {
               false
             );
 
-            /*
-             * If no server document exists,
-             * use the local Full Interior draft.
-             */
-
             setFullInteriorStatus(
               getBriefStatus(
                 fullInteriorBrief
@@ -678,8 +836,7 @@ export default function ClientPortal() {
           }
 
           /*
-           * Specifically check whether the Full Interior
-           * Brief has been saved.
+           * FULL INTERIOR BRIEF
            */
 
           const fullInteriorDocument =
@@ -938,11 +1095,6 @@ export default function ClientPortal() {
         )
     );
 
-  /*
-   * This indicator specifically means the
-   * Full Interior Brief has been saved.
-   */
-
   const briefSavedToPortal =
     Boolean(
       completedBriefDocument
@@ -952,9 +1104,6 @@ export default function ClientPortal() {
    * ==========================================================
    * PDF PROCESSING INFORMATION
    * ==========================================================
-   *
-   * These values are retained for compatibility with
-   * the existing local submission response.
    */
 
   const pdfGenerated =
@@ -982,11 +1131,6 @@ export default function ClientPortal() {
    * ==========================================================
    *
    * Server confirmation takes priority.
-   *
-   * This is the important change:
-   *
-   * A successfully stored brief PDF means the
-   * Client Brief stage is complete.
    */
 
   const clientBriefCompleted =
@@ -998,17 +1142,36 @@ export default function ClientPortal() {
    * ==========================================================
    * PROJECT PROGRESS
    * ==========================================================
+   *
+   * This is now calculated from the actual stage records.
    */
 
   const completedStageCount =
-    clientBriefCompleted
-      ? 2
-      : 1;
+    projectStages.filter(
+      (stage) =>
+        stage.status ===
+        "completed"
+    ).length;
 
   const progressPercentage =
-    (completedStageCount /
-      9) *
-    100;
+    projectStages.length > 0
+      ? (completedStageCount /
+          projectStages.length) *
+        100
+      : 0;
+
+  /*
+   * ==========================================================
+   * CURRENT PROJECT STAGE
+   * ==========================================================
+   */
+
+  const currentProjectStage =
+    projectStages.find(
+      (stage) =>
+        stage.status ===
+        "current"
+    );
 
   /*
    * ==========================================================
@@ -1047,51 +1210,6 @@ export default function ClientPortal() {
 
     return "Not started";
   }
-
-  /*
-   * ==========================================================
-   * PROJECT STAGES
-   * ==========================================================
-   */
-
-  const projectStages = [
-    {
-      number: "01",
-      title: "Consultation",
-    },
-    {
-      number: "02",
-      title: "Client Brief",
-    },
-    {
-      number: "03",
-      title: "Site Survey",
-    },
-    {
-      number: "04",
-      title: "Concept",
-    },
-    {
-      number: "05",
-      title: "Spatial Planning",
-    },
-    {
-      number: "06",
-      title: "3D Development",
-    },
-    {
-      number: "07",
-      title: "Technical Documentation",
-    },
-    {
-      number: "08",
-      title: "Fabrication",
-    },
-    {
-      number: "09",
-      title: "Installation",
-    },
-  ];
 
   /*
    * ==========================================================
@@ -1470,24 +1588,29 @@ export default function ClientPortal() {
 
               <div className="mt-6 border-t border-black/10 pt-5">
 
-                <div className="flex items-center justify-between text-xs">
+                <div className="flex items-center justify-between gap-4 text-xs">
 
                   <span className="text-black/40">
                     Current stage
                   </span>
 
                   <span
-                    className="font-semibold"
+                    className="text-right font-semibold"
                     style={{
                       color:
-                        clientBriefCompleted
-                          ? "#15803d"
-                          : RED,
+                        currentProjectStage
+                          ? RED
+                          : "#15803d",
                     }}
                   >
-                    {clientBriefCompleted
-                      ? "Site Survey"
-                      : "Client Brief"}
+                    {stagesLoading
+                      ? "Loading..."
+                      : currentProjectStage
+                      ? currentProjectStage.stage_name
+                      : completedStageCount ===
+                        9
+                      ? "Project Complete"
+                      : "—"}
                   </span>
 
                 </div>
@@ -1533,7 +1656,9 @@ export default function ClientPortal() {
               </div>
 
               <div className="rounded-full bg-[#f7f7f5] px-4 py-2 text-xs font-medium text-black/50">
-                {completedStageCount} of 9
+                {completedStageCount} of{" "}
+                {projectStages.length ||
+                  9}{" "}
                 stages
               </div>
 
@@ -1551,115 +1676,183 @@ export default function ClientPortal() {
 
             </div>
 
-            <div className="mt-8 space-y-3">
+            {stagesError && (
+              <div className="mt-6 rounded-xl border border-[#910B0A]/20 bg-[#910B0A]/5 p-4">
 
-              {projectStages.map(
-                (stage) => {
+                <p
+                  className="text-xs font-medium"
+                  style={{
+                    color: RED,
+                  }}
+                >
+                  Project stages unavailable
+                </p>
 
-                  const completed =
-                    stage.number ===
-                      "01" ||
-                    (
-                      stage.number ===
-                        "02" &&
-                      clientBriefCompleted
-                    );
+                <p className="mt-1 break-words text-xs leading-5 text-black/45">
+                  {stagesError}
+                </p>
 
-                  const current =
-                    (
-                      stage.number ===
-                        "02" &&
-                      !clientBriefCompleted
-                    ) ||
-                    (
-                      stage.number ===
-                        "03" &&
-                      clientBriefCompleted
-                    );
+                <button
+                  type="button"
+                  onClick={() =>
+                    loadProjectStages(
+                      client.id
+                    )
+                  }
+                  className="mt-3 rounded-lg px-4 py-2 text-xs font-semibold text-white"
+                  style={{
+                    backgroundColor:
+                      RED,
+                  }}
+                >
+                  Try Again
+                </button>
 
-                  return (
-                    <div
-                      key={
-                        stage.number
-                      }
-                      className={`flex items-center gap-4 rounded-2xl border p-4 transition ${
-                        completed
-                          ? "border-green-600/20 bg-green-50"
-                          : current
-                          ? "border-[#910B0A]/30 bg-[#910B0A]/5"
-                          : "border-black/10 bg-[#f7f7f5]"
-                      }`}
-                    >
+              </div>
+            )}
 
-                      <div
-                        className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-full text-xs font-semibold ${
-                          completed
-                            ? "bg-green-600 text-white"
-                            : current
-                            ? "text-white"
-                            : "bg-black/5 text-black/35"
-                        }`}
-                        style={
-                          current
-                            ? {
-                                backgroundColor:
-                                  RED,
-                              }
-                            : undefined
-                        }
-                      >
-                        {completed
-                          ? "✓"
-                          : stage.number}
-                      </div>
+            {stagesLoading &&
+              projectStages.length ===
+                0 && (
+                <div className="mt-8 rounded-2xl border border-black/10 bg-[#f7f7f5] p-6">
 
-                      <div className="min-w-0 flex-1">
+                  <div className="flex items-center gap-4">
 
-                        <p className="text-sm font-semibold">
-                          {stage.title}
-                        </p>
+                    <div className="h-8 w-8 animate-spin rounded-full border-2 border-black/10 border-t-black" />
 
-                        <p className="mt-1 text-xs text-black/40">
-                          {completed
-                            ? "Completed"
-                            : current
-                            ? "Action required"
-                            : "Upcoming"}
-                        </p>
+                    <div>
+                      <p className="text-sm font-medium">
+                        Loading project journey
+                      </p>
 
-                      </div>
-
-                      {completed && (
-                        <span className="hidden rounded-full bg-green-600/10 px-3 py-1 text-[10px] font-semibold uppercase tracking-wider text-green-700 sm:block">
-                          Complete
-                        </span>
-                      )}
-
-                      {current && (
-                        <span
-                          className="hidden rounded-full px-3 py-1 text-[10px] font-semibold uppercase tracking-wider text-white sm:block"
-                          style={{
-                            backgroundColor:
-                              RED,
-                          }}
-                        >
-                          Current
-                        </span>
-                      )}
-
-                      {!completed &&
-                        !current && (
-                          <span className="hidden text-[10px] uppercase tracking-wider text-black/25 sm:block">
-                            Upcoming
-                          </span>
-                        )}
-
+                      <p className="mt-1 text-xs text-black/40">
+                        Checking your current
+                        project stage...
+                      </p>
                     </div>
-                  );
-                }
+
+                  </div>
+
+                </div>
               )}
 
-            </div>
+            {!stagesError &&
+              projectStages.length >
+                0 && (
+                <div className="mt-8 space-y-3">
+
+                  {projectStages
+                    .sort(
+                      (
+                        a,
+                        b
+                      ) =>
+                        a.stage_number -
+                        b.stage_number
+                    )
+                    .map(
+                      (stage) => {
+
+                        const completed =
+                          stage.status ===
+                          "completed";
+
+                        const current =
+                          stage.status ===
+                          "current";
+
+                        return (
+                          <div
+                            key={
+                              stage.id ||
+                              stage.stage_number
+                            }
+                            className={`flex items-center gap-4 rounded-2xl border p-4 transition ${
+                              completed
+                                ? "border-green-600/20 bg-green-50"
+                                : current
+                                ? "border-[#910B0A]/30 bg-[#910B0A]/5"
+                                : "border-black/10 bg-[#f7f7f5]"
+                            }`}
+                          >
+
+                            <div
+                              className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-full text-xs font-semibold ${
+                                completed
+                                  ? "bg-green-600 text-white"
+                                  : current
+                                  ? "text-white"
+                                  : "bg-black/5 text-black/35"
+                              }`}
+                              style={
+                                current
+                                  ? {
+                                      backgroundColor:
+                                        RED,
+                                    }
+                                  : undefined
+                              }
+                            >
+                              {completed
+                                ? "✓"
+                                : String(
+                                    stage.stage_number
+                                  ).padStart(
+                                    2,
+                                    "0"
+                                  )}
+                            </div>
+
+                            <div className="min-w-0 flex-1">
+
+                              <p className="text-sm font-semibold">
+                                {
+                                  stage.stage_name
+                                }
+                              </p>
+
+                              <p className="mt-1 text-xs text-black/40">
+                                {completed
+                                  ? "Completed"
+                                  : current
+                                  ? "Action required"
+                                  : "Upcoming"}
+                              </p>
+
+                            </div>
+
+                            {completed && (
+                              <span className="hidden rounded-full bg-green-600/10 px-3 py-1 text-[10px] font-semibold uppercase tracking-wider text-green-700 sm:block">
+                                Complete
+                              </span>
+                            )}
+
+                            {current && (
+                              <span
+                                className="hidden rounded-full px-3 py-1 text-[10px] font-semibold uppercase tracking-wider text-white sm:block"
+                                style={{
+                                  backgroundColor:
+                                    RED,
+                                }}
+                              >
+                                Current
+                              </span>
+                            )}
+
+                            {!completed &&
+                              !current && (
+                                <span className="hidden text-[10px] uppercase tracking-wider text-black/25 sm:block">
+                                  Upcoming
+                                </span>
+                              )}
+
+                          </div>
+                        );
+                      }
+                    )}
+
+                </div>
+              )}
 
           </div>
 
@@ -1701,17 +1894,23 @@ export default function ClientPortal() {
 
                 <button
                   type="button"
-                  onClick={() =>
+                  onClick={() => {
                     loadDocuments(
                       client.id
-                    )
-                  }
+                    );
+
+                    loadProjectStages(
+                      client.id
+                    );
+                  }}
                   disabled={
-                    documentsLoading
+                    documentsLoading ||
+                    stagesLoading
                   }
                   className="shrink-0 rounded-xl border border-black/10 bg-white px-3 py-2 text-[10px] font-semibold uppercase tracking-wider text-black/50 transition hover:border-black/25 hover:text-black disabled:cursor-not-allowed disabled:opacity-50"
                 >
-                  {documentsLoading
+                  {documentsLoading ||
+                  stagesLoading
                     ? "Loading..."
                     : "Refresh"}
                 </button>
