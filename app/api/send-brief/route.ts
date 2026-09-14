@@ -69,7 +69,10 @@ function normalizeBriefType(value: unknown): string {
     return "full_interior_brief";
   }
 
-  if (type === "client_brief" || type === "client brief") {
+  if (
+    type === "client_brief" ||
+    type === "client brief"
+  ) {
     return "client_brief";
   }
 
@@ -194,7 +197,10 @@ function formatValue(value: unknown): string {
   if (Array.isArray(value)) {
     return value
       .map((item) => {
-        if (typeof item === "object" && item !== null) {
+        if (
+          typeof item === "object" &&
+          item !== null
+        ) {
           return JSON.stringify(item);
         }
 
@@ -218,7 +224,10 @@ function flattenObject(
   value: AnyObject,
   prefix = ""
 ): Array<{ label: string; value: string }> {
-  const result: Array<{ label: string; value: string }> = [];
+  const result: Array<{
+    label: string;
+    value: string;
+  }> = [];
 
   for (const [key, rawValue] of Object.entries(value)) {
     if (
@@ -230,14 +239,19 @@ function flattenObject(
       continue;
     }
 
-    const label = prefix ? `${prefix} / ${key}` : key;
+    const label = prefix
+      ? `${prefix} / ${key}`
+      : key;
 
     if (
       rawValue &&
       typeof rawValue === "object" &&
       !Array.isArray(rawValue)
     ) {
-      result.push(...flattenObject(rawValue, label));
+      result.push(
+        ...flattenObject(rawValue, label)
+      );
+
       continue;
     }
 
@@ -288,7 +302,8 @@ async function generatePdf(
       const clientName = getClientName(briefData);
       const clientEmail = getClientEmail(briefData);
       const projectName = getProjectName(briefData);
-      const projectLocation = getProjectLocation(briefData);
+      const projectLocation =
+        getProjectLocation(briefData);
 
       doc
         .fontSize(20)
@@ -314,7 +329,10 @@ async function generatePdf(
         .text(
           documentType
             .replace(/_/g, " ")
-            .replace(/\b\w/g, (letter) => letter.toUpperCase())
+            .replace(
+              /\b\w/g,
+              (letter) => letter.toUpperCase()
+            )
         );
 
       doc.moveDown(1);
@@ -414,18 +432,21 @@ async function savePdfToSupabase(
 
   const pdfFileName = `${sanitizeFileName(
     clientName || "client"
-  )}-${sanitizeFileName(documentType)}-${Date.now()}.pdf`;
+  )}-${sanitizeFileName(
+    documentType
+  )}-${Date.now()}.pdf`;
 
   const storagePath = `${sanitizeFileName(
     clientId
   )}/${pdfFileName}`;
 
-  const { error: uploadError } = await supabase.storage
-    .from("client-documents")
-    .upload(storagePath, pdfBuffer, {
-      contentType: "application/pdf",
-      upsert: true,
-    });
+  const { error: uploadError } =
+    await supabase.storage
+      .from("client-documents")
+      .upload(storagePath, pdfBuffer, {
+        contentType: "application/pdf",
+        upsert: true,
+      });
 
   if (uploadError) {
     throw new Error(
@@ -433,38 +454,48 @@ async function savePdfToSupabase(
     );
   }
 
-  const { data: publicUrlData } = supabase.storage
-    .from("client-documents")
-    .getPublicUrl(storagePath);
+  const { data: publicUrlData } =
+    supabase.storage
+      .from("client-documents")
+      .getPublicUrl(storagePath);
 
-  const documentUrl = publicUrlData?.publicUrl || null;
+  const documentUrl =
+    publicUrlData?.publicUrl || null;
 
   const documentName =
     projectName &&
     projectName !== "Interior Design Project"
-      ? `${projectName} - ${documentType.replace(/_/g, " ")}`
-      : `${clientName} - ${documentType.replace(/_/g, " ")}`;
+      ? `${projectName} - ${documentType.replace(
+          /_/g,
+          " "
+        )}`
+      : `${clientName} - ${documentType.replace(
+          /_/g,
+          " "
+        )}`;
 
-  const { data: insertedDocument, error: insertError } =
-    await supabase
-      .from("client_documents")
-      .insert({
-        client_id: clientId,
-        document_type: documentType,
-        document_name: documentName,
-        file_url: documentUrl,
-        storage_path: storagePath,
-        mime_type: "application/pdf",
-        file_size: pdfBuffer.length,
-        metadata: {
-          client_name: clientName,
-          client_email: clientEmail,
-          project_name: projectName,
-          source: "client_brief_submission",
-        },
-      })
-      .select()
-      .single();
+  const {
+    data: insertedDocument,
+    error: insertError,
+  } = await supabase
+    .from("client_documents")
+    .insert({
+      client_id: clientId,
+      document_type: documentType,
+      document_name: documentName,
+      file_url: documentUrl,
+      storage_path: storagePath,
+      mime_type: "application/pdf",
+      file_size: pdfBuffer.length,
+      metadata: {
+        client_name: clientName,
+        client_email: clientEmail,
+        project_name: projectName,
+        source: "client_brief_submission",
+      },
+    })
+    .select()
+    .single();
 
   if (insertError) {
     try {
@@ -497,7 +528,8 @@ async function sendEmail(
   const smtpHost = process.env.SMTP_HOST;
   const smtpPort = process.env.SMTP_PORT;
   const smtpUser = process.env.SMTP_USER;
-  const smtpPassword = process.env.SMTP_PASSWORD;
+  const smtpPassword =
+    process.env.SMTP_PASSWORD;
 
   const emailFrom =
     process.env.EMAIL_FROM ||
@@ -505,7 +537,12 @@ async function sendEmail(
     smtpUser ||
     "";
 
-  if (!smtpHost || !smtpPort || !smtpUser || !smtpPassword) {
+  if (
+    !smtpHost ||
+    !smtpPort ||
+    !smtpUser ||
+    !smtpPassword
+  ) {
     console.warn(
       "SMTP configuration is missing. Skipping email notification."
     );
@@ -516,19 +553,23 @@ async function sendEmail(
     };
   }
 
-  const clientEmail = getClientEmail(briefData);
-  const clientName = getClientName(briefData);
-  const projectName = getProjectName(briefData);
+  const clientEmail =
+    getClientEmail(briefData);
+  const clientName =
+    getClientName(briefData);
+  const projectName =
+    getProjectName(briefData);
 
-  const transporter = nodemailer.createTransport({
-    host: smtpHost,
-    port: Number(smtpPort),
-    secure: Number(smtpPort) === 465,
-    auth: {
-      user: smtpUser,
-      pass: smtpPassword,
-    },
-  });
+  const transporter =
+    nodemailer.createTransport({
+      host: smtpHost,
+      port: Number(smtpPort),
+      secure: Number(smtpPort) === 465,
+      auth: {
+        user: smtpUser,
+        pass: smtpPassword,
+      },
+    });
 
   const recipients = new Set<string>();
 
@@ -564,7 +605,10 @@ async function sendEmail(
 Client: ${clientName}
 Email: ${clientEmail || "Not provided"}
 Project: ${projectName}
-Brief Type: ${documentType.replace(/_/g, " ")}
+Brief Type: ${documentType.replace(
+      /_/g,
+      " "
+    )}
 
 The submitted brief PDF is attached.`,
     attachments: [
@@ -582,78 +626,255 @@ The submitted brief PDF is attached.`,
   };
 }
 
-export async function POST(request: NextRequest) {
-  try {
-    /*
-     * Read the request body safely.
-     *
-     * This prevents the route from crashing with an obscure
-     * JSON parser error if the browser sends an empty or malformed
-     * request.
-     */
+/**
+ * Extract the actual brief object from the incoming request.
+ *
+ * Supports:
+ * 1. application/json
+ * 2. multipart/form-data
+ *
+ * This is important because the existing client brief flow
+ * may be using FormData for reference files/attachments.
+ */
+async function readBriefData(
+  request: NextRequest
+): Promise<AnyObject> {
+  const contentType =
+    request.headers.get("content-type") || "";
+
+  /*
+   * Normal JSON request
+   */
+  if (
+    contentType
+      .toLowerCase()
+      .includes("application/json")
+  ) {
     const rawBody = await request.text();
 
-    if (!rawBody || !rawBody.trim()) {
-      return NextResponse.json(
-        {
-          success: false,
-          error: "The submitted brief is empty.",
-        },
-        { status: 400 }
+    if (!rawBody.trim()) {
+      throw new Error(
+        "The submitted brief is empty."
       );
     }
 
-    let briefData: AnyObject;
-
     try {
-      briefData = JSON.parse(rawBody);
-    } catch (jsonError) {
+      const parsed = JSON.parse(rawBody);
+
+      if (
+        !parsed ||
+        typeof parsed !== "object" ||
+        Array.isArray(parsed)
+      ) {
+        throw new Error(
+          "Invalid brief data."
+        );
+      }
+
+      return parsed;
+    } catch (error) {
       console.error(
-        "INVALID BRIEF JSON:",
-        jsonError,
-        "RAW BODY:",
-        rawBody.substring(0, 500)
+        "JSON brief parsing failed:",
+        error
       );
 
-      return NextResponse.json(
-        {
-          success: false,
-          error:
-            "The submitted brief contains invalid JSON. Please refresh the client portal and try again.",
-        },
-        { status: 400 }
+      throw new Error(
+        "The submitted brief contains invalid JSON."
       );
+    }
+  }
+
+  /*
+   * FormData / multipart request
+   */
+  if (
+    contentType
+      .toLowerCase()
+      .includes("multipart/form-data")
+  ) {
+    const formData =
+      await request.formData();
+
+    const possibleJsonKeys = [
+      "briefData",
+      "brief",
+      "data",
+      "formData",
+      "payload",
+      "clientBrief",
+    ];
+
+    /*
+     * First look for a field containing the
+     * complete JSON brief.
+     */
+    for (const key of possibleJsonKeys) {
+      const value = formData.get(key);
+
+      if (typeof value !== "string") {
+        continue;
+      }
+
+      if (!value.trim()) {
+        continue;
+      }
+
+      try {
+        const parsed = JSON.parse(value);
+
+        if (
+          parsed &&
+          typeof parsed === "object" &&
+          !Array.isArray(parsed)
+        ) {
+          return parsed;
+        }
+      } catch {
+        // Continue checking other fields.
+      }
+    }
+
+    /*
+     * Some versions of the client may submit the
+     * fields directly into FormData rather than putting
+     * them inside one JSON field.
+     */
+    const reconstructed: AnyObject = {};
+
+    for (const [
+      key,
+      value,
+    ] of formData.entries()) {
+      if (
+        typeof value === "string"
+      ) {
+        const trimmed = value.trim();
+
+        if (!trimmed) {
+          continue;
+        }
+
+        /*
+         * Try JSON for individual fields.
+         */
+        try {
+          reconstructed[key] =
+            JSON.parse(trimmed);
+        } catch {
+          reconstructed[key] = value;
+        }
+      }
     }
 
     if (
-      !briefData ||
-      typeof briefData !== "object" ||
-      Array.isArray(briefData)
+      Object.keys(reconstructed)
+        .length > 0
     ) {
-      return NextResponse.json(
-        {
-          success: false,
-          error: "Invalid brief data.",
-        },
-        { status: 400 }
-      );
+      return reconstructed;
     }
 
-    const documentType = getDocumentType(briefData);
-    const clientId = getClientId(briefData);
-    const clientName = getClientName(briefData);
-    const clientEmail = getClientEmail(briefData);
-    const projectName = getProjectName(briefData);
+    throw new Error(
+      "The submitted brief form is empty."
+    );
+  }
 
-    console.log("========== KBX BRIEF SUBMISSION ==========");
-    console.log("Document type:", documentType);
-    console.log("Client ID:", clientId);
-    console.log("Client name:", clientName);
-    console.log("Client email:", clientEmail);
-    console.log("Project:", projectName);
-    console.log("==========================================");
+  /*
+   * Fallback for an unusual content type.
+   */
+  const rawBody = await request.text();
 
-    if (!CLIENT_BRIEF_DOCUMENT_TYPES.includes(documentType)) {
+  if (!rawBody.trim()) {
+    throw new Error(
+      "The submitted brief is empty."
+    );
+  }
+
+  try {
+    const parsed = JSON.parse(rawBody);
+
+    if (
+      !parsed ||
+      typeof parsed !== "object" ||
+      Array.isArray(parsed)
+    ) {
+      throw new Error();
+    }
+
+    return parsed;
+  } catch {
+    throw new Error(
+      "The submitted brief could not be read."
+    );
+  }
+}
+
+export async function POST(
+  request: NextRequest
+) {
+  try {
+    const briefData =
+      await readBriefData(request);
+
+    const documentType =
+      getDocumentType(briefData);
+
+    const clientId =
+      getClientId(briefData);
+
+    const clientName =
+      getClientName(briefData);
+
+    const clientEmail =
+      getClientEmail(briefData);
+
+    const projectName =
+      getProjectName(briefData);
+
+    console.log(
+      "========== KBX BRIEF SUBMISSION =========="
+    );
+
+    console.log(
+      "Content-Type:",
+      request.headers.get(
+        "content-type"
+      )
+    );
+
+    console.log(
+      "Document type:",
+      documentType
+    );
+
+    console.log(
+      "Client ID:",
+      clientId
+    );
+
+    console.log(
+      "Client name:",
+      clientName
+    );
+
+    console.log(
+      "Client email:",
+      clientEmail
+    );
+
+    console.log(
+      "Project:",
+      projectName
+    );
+
+    console.log(
+      "=========================================="
+    );
+
+    if (
+      !CLIENT_BRIEF_DOCUMENT_TYPES.includes(
+        documentType
+      )
+    ) {
       return NextResponse.json(
         {
           success: false,
@@ -674,20 +895,25 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const pdfBuffer = await generatePdf(
-      briefData,
-      documentType
-    );
+    const pdfBuffer =
+      await generatePdf(
+        briefData,
+        documentType
+      );
 
-    const saved = await savePdfToSupabase(
-      briefData,
-      documentType,
-      pdfBuffer
-    );
+    const saved =
+      await savePdfToSupabase(
+        briefData,
+        documentType,
+        pdfBuffer
+      );
 
     const documentName =
       saved.document?.document_name ||
-      `${clientName} - ${documentType.replace(/_/g, " ")}.pdf`;
+      `${clientName} - ${documentType.replace(
+        /_/g,
+        " "
+      )}.pdf`;
 
     let emailResult = {
       sent: false,
@@ -695,12 +921,13 @@ export async function POST(request: NextRequest) {
     };
 
     try {
-      emailResult = await sendEmail(
-        briefData,
-        documentType,
-        pdfBuffer,
-        documentName
-      );
+      emailResult =
+        await sendEmail(
+          briefData,
+          documentType,
+          pdfBuffer,
+          documentName
+        );
     } catch (emailError) {
       console.error(
         "Email notification failed:",
@@ -710,17 +937,25 @@ export async function POST(request: NextRequest) {
 
     return NextResponse.json({
       success: true,
-      message: "Client brief submitted successfully.",
+      message:
+        "Client brief submitted successfully.",
       clientId,
-      documentId: saved.document?.id || null,
+      documentId:
+        saved.document?.id || null,
       documentType,
       documentName,
-      documentUrl: saved.documentUrl,
-      storagePath: saved.storagePath,
-      emailSent: emailResult.sent,
+      documentUrl:
+        saved.documentUrl,
+      storagePath:
+        saved.storagePath,
+      emailSent:
+        emailResult.sent,
     });
   } catch (error) {
-    console.error("SEND BRIEF ERROR:", error);
+    console.error(
+      "SEND BRIEF ERROR:",
+      error
+    );
 
     const message =
       error instanceof Error
