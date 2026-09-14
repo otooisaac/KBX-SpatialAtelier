@@ -1,3364 +1,715 @@
-import { NextResponse } from "next/server";
-import {
-  PDFDocument,
-  StandardFonts,
-  rgb,
-  PDFPage,
-  PDFFont,
-  PDFImage,
-} from "pdf-lib";
-import { Resend } from "resend";
+import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
-import fs from "fs/promises";
-import path from "path";
-import sharp from "sharp";
-
-export const runtime = "nodejs";
-
-const RED = rgb(0.569, 0.043, 0.039);
-const BLACK = rgb(0.04, 0.04, 0.04);
-const DARK_GRAY = rgb(0.25, 0.25, 0.25);
-const MID_GRAY = rgb(0.45, 0.45, 0.45);
-const LIGHT_GRAY = rgb(0.9, 0.9, 0.9);
-const VERY_LIGHT = rgb(0.97, 0.97, 0.96);
-const WHITE = rgb(1, 1, 1);
-
-const KBX_EMAIL =
-  process.env.KBX_EMAIL ||
-  "otooisaackb2003@gmail.com";
-
-const DEFAULT_FROM_EMAIL =
-  "KBX Spatial Atelier <onboarding@resend.dev>";
-
-const STORAGE_BUCKET =
-  process.env.SUPABASE_STORAGE_BUCKET ||
-  "client-documents";
-
-type BriefType =
-  | "kitchen"
-  | "wardrobe"
-  | "tv_unit"
-  | "full_interior";
+import nodemailer from "nodemailer";
+import PDFDocument from "pdfkit";
 
 type AnyObject = Record<string, any>;
 
-type ReferenceImage = {
-  file: File;
-  name: string;
-  type: string;
-  bytes: Uint8Array;
-};
+const SUPABASE_URL = process.env.NEXT_PUBLIC_SUPABASE_URL;
+const SUPABASE_SERVICE_ROLE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY;
 
-type PDFContext = {
-  pdf: PDFDocument;
-  page: PDFPage;
-  regular: PDFFont;
-  bold: PDFFont;
-  width: number;
-  height: number;
-  margin: number;
-  y: number;
-};
+const supabase =
+  SUPABASE_URL && SUPABASE_SERVICE_ROLE_KEY
+    ? createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY)
+    : null;
 
-function getFromEmail() {
-  return (
-    process.env.RESEND_FROM_EMAIL ||
-    DEFAULT_FROM_EMAIL
+const CLIENT_BRIEF_DOCUMENT_TYPES = [
+  "kitchen_brief",
+  "wardrobe_brief",
+  "tv_unit_brief",
+  "full_interior_brief",
+  "client_brief",
+];
+
+function cleanText(value: unknown): string {
+  if (value === null || value === undefined) return "";
+
+  return String(value).trim();
+}
+
+function normalizeBriefType(value: unknown): string {
+  const type = cleanText(value).toLowerCase();
+
+  if (
+    type === "kitchen" ||
+    type === "kitchen_brief" ||
+    type === "kitchen brief"
+  ) {
+    return "kitchen_brief";
+  }
+
+  if (
+    type === "wardrobe" ||
+    type === "wardrobe_brief" ||
+    type === "wardrobe brief" ||
+    type === "closet" ||
+    type === "closet_brief"
+  ) {
+    return "wardrobe_brief";
+  }
+
+  if (
+    type === "tv" ||
+    type === "tv_unit" ||
+    type === "tv_unit_brief" ||
+    type === "tv unit" ||
+    type === "tv unit brief"
+  ) {
+    return "tv_unit_brief";
+  }
+
+  if (
+    type === "full_interior" ||
+    type === "full_interior_brief" ||
+    type === "full interior" ||
+    type === "full interior brief"
+  ) {
+    return "full_interior_brief";
+  }
+
+  if (type === "client_brief" || type === "client brief") {
+    return "client_brief";
+  }
+
+  return type || "client_brief";
+}
+
+function getDocumentType(briefData: AnyObject): string {
+  return normalizeBriefType(
+    briefData.documentType ||
+      briefData.document_type ||
+      briefData.briefType ||
+      briefData.brief_type ||
+      briefData.type ||
+      briefData.form?.documentType ||
+      briefData.form?.document_type ||
+      briefData.form?.briefType ||
+      briefData.form?.brief_type ||
+      briefData.form?.type
   );
 }
 
-function cleanText(value: unknown): string {
-  if (value === null || value === undefined) {
-    return "";
-  }
+function getClient(briefData: AnyObject): AnyObject {
+  return (
+    briefData.client ||
+    briefData.form?.client ||
+    briefData.customer ||
+    briefData.form?.customer ||
+    {}
+  );
+}
 
-  if (typeof value === "string") {
-    return value.trim();
-  }
+function getClientId(briefData: AnyObject): string {
+  const client = getClient(briefData);
 
-  if (
-    typeof value === "number" ||
-    typeof value === "boolean"
-  ) {
-    return String(value);
-  }
+  return (
+    cleanText(client.id) ||
+    cleanText(client.clientId) ||
+    cleanText(briefData.clientId) ||
+    cleanText(briefData.client_id) ||
+    cleanText(briefData.form?.clientId) ||
+    cleanText(briefData.form?.client_id) ||
+    ""
+  );
+}
 
-  return "";
+function getClientName(briefData: AnyObject): string {
+  const client = getClient(briefData);
+
+  const directName =
+    cleanText(client.name) ||
+    cleanText(client.fullName) ||
+    cleanText(client.full_name);
+
+  if (directName) return directName;
+
+  const firstName =
+    cleanText(client.firstName) || cleanText(client.first_name);
+
+  const lastName =
+    cleanText(client.lastName) || cleanText(client.last_name);
+
+  const combined = `${firstName} ${lastName}`.trim();
+
+  if (combined) return combined;
+
+  return (
+    cleanText(briefData.clientName) ||
+    cleanText(briefData.client_name) ||
+    cleanText(briefData.name) ||
+    "KBX Client"
+  );
+}
+
+function getClientEmail(briefData: AnyObject): string {
+  const client = getClient(briefData);
+
+  return (
+    cleanText(client.email) ||
+    cleanText(client.emailAddress) ||
+    cleanText(client.email_address) ||
+    cleanText(briefData.clientEmail) ||
+    cleanText(briefData.client_email) ||
+    cleanText(briefData.email) ||
+    cleanText(briefData.form?.email) ||
+    ""
+  );
+}
+
+function getProjectName(briefData: AnyObject): string {
+  return (
+    cleanText(briefData.projectName) ||
+    cleanText(briefData.project_name) ||
+    cleanText(briefData.form?.projectName) ||
+    cleanText(briefData.form?.project_name) ||
+    cleanText(briefData.project) ||
+    "Interior Design Project"
+  );
+}
+
+function getProjectLocation(briefData: AnyObject): string {
+  return (
+    cleanText(briefData.projectLocation) ||
+    cleanText(briefData.project_location) ||
+    cleanText(briefData.location) ||
+    cleanText(briefData.form?.projectLocation) ||
+    cleanText(briefData.form?.project_location) ||
+    ""
+  );
 }
 
 function formatValue(value: unknown): string {
-  if (
-    value === null ||
-    value === undefined ||
-    value === ""
-  ) {
-    return "Not provided";
-  }
+  if (value === null || value === undefined) return "";
 
   if (Array.isArray(value)) {
-    if (value.length === 0) {
-      return "Not provided";
-    }
-
     return value
-      .map((item) => formatValue(item))
-      .join(", ");
-  }
+      .map((item) => {
+        if (typeof item === "object" && item !== null) {
+          return JSON.stringify(item);
+        }
 
-  if (typeof value === "boolean") {
-    return value ? "Yes" : "No";
+        return String(item);
+      })
+      .join(", ");
   }
 
   if (typeof value === "object") {
     try {
-      return JSON.stringify(value);
+      return JSON.stringify(value, null, 2);
     } catch {
-      return "Not provided";
+      return String(value);
     }
   }
 
   return String(value);
 }
 
-function titleCaseKey(key: string): string {
-  return key
-    .replace(
-      /([a-z])([A-Z])/g,
-      "$1 $2"
-    )
-    .replace(
-      /[_-]+/g,
-      " "
-    )
-    .replace(
-      /\s+/g,
-      " "
-    )
-    .trim()
-    .replace(
-      /\b\w/g,
-      (char) =>
-        char.toUpperCase()
-    );
-}
+function flattenObject(
+  value: AnyObject,
+  prefix = ""
+): Array<{ label: string; value: string }> {
+  const result: Array<{ label: string; value: string }> = [];
 
-function getBriefLabel(
-  type: BriefType
-): string {
-  switch (type) {
-    case "kitchen":
-      return "Kitchen & Storerooms";
-
-    case "wardrobe":
-      return "Wardrobes & Walk-in Closets";
-
-    case "tv_unit":
-      return "TV Unit";
-
-    case "full_interior":
-      return "Full Interior Project";
-
-    default:
-      return "Client Design Brief";
-  }
-}
-
-function getBriefCode(
-  type: BriefType
-): string {
-  switch (type) {
-    case "kitchen":
-      return "01";
-
-    case "wardrobe":
-      return "02";
-
-    case "tv_unit":
-      return "03";
-
-    case "full_interior":
-      return "04";
-
-    default:
-      return "00";
-  }
-}
-
-function getDocumentType(
-  type: BriefType
-): string {
-  switch (type) {
-    case "kitchen":
-      return "kitchen_brief";
-
-    case "wardrobe":
-      return "wardrobe_brief";
-
-    case "tv_unit":
-      return "tv_unit_brief";
-
-    case "full_interior":
-      return "full_interior_brief";
-
-    default:
-      return "client_brief";
-  }
-}
-
-function safeFilename(
-  value: string
-): string {
-  return (
-    value
-      .normalize("NFKD")
-      .replace(
-        /[^\w\s-]/g,
-        ""
-      )
-      .trim()
-      .replace(
-        /\s+/g,
-        "_"
-      )
-      .replace(
-        /_+/g,
-        "_"
-      )
-      .slice(
-        0,
-        80
-      ) ||
-    "KBX_Client_Brief"
-  );
-}
-
-function normalizeBriefType(
-  value: unknown,
-  briefData: AnyObject
-): BriefType | null {
-  const explicit =
-    cleanText(value).toLowerCase();
-
-  if (
-    explicit === "kitchen" ||
-    explicit === "wardrobe" ||
-    explicit === "tv_unit" ||
-    explicit === "full_interior"
-  ) {
-    return explicit;
-  }
-
-  const form =
-    briefData?.form || {};
-
-  if (
-    "tvBrandModel" in form ||
-    "tvInstallation" in form ||
-    "preferredTVSize" in form
-  ) {
-    return "tv_unit";
-  }
-
-  if (
-    "wardrobeDoors" in form ||
-    "hangingRequirements" in form ||
-    "loftCabinets" in form ||
-    "vanityDressingArea" in form
-  ) {
-    return "wardrobe";
-  }
-
-  if (
-    "builtInCabinetry" in form ||
-    "ownsAppliances" in form ||
-    "sinkProvidedBy" in form ||
-    "kitchenLayout" in form
-  ) {
-    return "kitchen";
-  }
-
-  if (
-    "spaces" in form ||
-    "lifestyle" in form ||
-    "designStyles" in form
-  ) {
-    return "full_interior";
-  }
-
-  return null;
-}
-
-function getClient(
-  briefData: AnyObject
-): AnyObject {
-  return (
-    briefData?.client ||
-    briefData?.form?.client ||
-    {}
-  );
-}
-
-function getForm(
-  briefData: AnyObject
-): AnyObject {
-  return (
-    briefData?.form || {}
-  );
-}
-
-function getClientName(
-  briefData: AnyObject
-): string {
-  const client =
-    getClient(briefData);
-
-  const form =
-    getForm(briefData);
-
-  return (
-    cleanText(
-      client.name
-    ) ||
-    cleanText(
-      form.clientName
-    ) ||
-    "Client"
-  );
-}
-
-function getClientEmail(
-  briefData: AnyObject
-): string {
-  const client =
-    getClient(briefData);
-
-  const form =
-    getForm(briefData);
-
-  return (
-    cleanText(
-      client.email
-    ) ||
-    cleanText(
-      form.email
-    )
-  );
-}
-
-function getClientId(
-  briefData: AnyObject
-): string {
-  const client =
-    getClient(briefData);
-
-  return (
-    cleanText(
-      client.id
-    ) ||
-    cleanText(
-      client.clientId
-    ) ||
-    ""
-  );
-}
-
-function getProjectName(
-  briefData: AnyObject
-): string {
-  const form =
-    getForm(briefData);
-
-  return (
-    cleanText(
-      form.projectName
-    ) ||
-    "Client Project"
-  );
-}
-
-function addPage(
-  ctx: PDFContext
-): PDFContext {
-  const page =
-    ctx.pdf.addPage([
-      ctx.width,
-      ctx.height,
-    ]);
-
-  drawPageHeader(
-    page,
-    ctx.regular,
-    ctx.bold,
-    ctx.width,
-    ctx.height
-  );
-
-  return {
-    ...ctx,
-    page,
-    y:
-      ctx.height -
-      95,
-  };
-}
-
-function ensureSpace(
-  ctx: PDFContext,
-  requiredHeight = 60
-): PDFContext {
-  if (
-    ctx.y -
-      requiredHeight <
-    50
-  ) {
-    return addPage(ctx);
-  }
-
-  return ctx;
-}
-
-function drawPageHeader(
-  page: PDFPage,
-  regular: PDFFont,
-  bold: PDFFont,
-  width: number,
-  height: number
-) {
-  page.drawLine({
-    start: {
-      x: 45,
-      y:
-        height - 38,
-    },
-    end: {
-      x:
-        width - 45,
-      y:
-        height - 38,
-    },
-    thickness: 1,
-    color: LIGHT_GRAY,
-  });
-
-  page.drawText(
-    "KBX SPATIAL ATELIER",
-    {
-      x: 45,
-      y:
-        height - 30,
-      size: 7,
-      font: bold,
-      color: DARK_GRAY,
-    }
-  );
-
-  page.drawText(
-    "CLIENT DESIGN BRIEF",
-    {
-      x:
-        width -
-        45 -
-        90,
-      y:
-        height - 30,
-      size: 7,
-      font: regular,
-      color: MID_GRAY,
-    }
-  );
-}
-
-function wrapText(
-  text: string,
-  font: PDFFont,
-  fontSize: number,
-  maxWidth: number
-): string[] {
-  const normalized =
-    text
-      .replace(
-        /\r\n/g,
-        "\n"
-      )
-      .replace(
-        /\r/g,
-        "\n"
-      );
-
-  const paragraphs =
-    normalized.split(
-      "\n"
-    );
-
-  const lines: string[] =
-    [];
-
-  for (
-    const paragraph of paragraphs
-  ) {
-    const words =
-      paragraph.split(
-        /\s+/
-      );
-
+  for (const [key, rawValue] of Object.entries(value)) {
     if (
-      words.length === 1 &&
-      words[0] === ""
-    ) {
-      lines.push("");
-      continue;
-    }
-
-    let current =
-      "";
-
-    for (
-      const word of words
-    ) {
-      const candidate =
-        current
-          ? `${current} ${word}`
-          : word;
-
-      const textWidth =
-        font.widthOfTextAtSize(
-          candidate,
-          fontSize
-        );
-
-      if (
-        textWidth <=
-          maxWidth ||
-        current.length === 0
-      ) {
-        current =
-          candidate;
-      } else {
-        lines.push(
-          current
-        );
-
-        current =
-          word;
-      }
-    }
-
-    if (current) {
-      lines.push(
-        current
-      );
-    }
-  }
-
-  return lines;
-}
-
-function drawWrappedText(
-  ctx: PDFContext,
-  text: string,
-  options?: {
-    size?: number;
-    font?: PDFFont;
-    color?: ReturnType<
-      typeof rgb
-    >;
-    lineHeight?: number;
-    maxWidth?: number;
-  }
-): PDFContext {
-  let current =
-    ensureSpace(
-      ctx,
-      30
-    );
-
-  const size =
-    options?.size ||
-    9;
-
-  const font =
-    options?.font ||
-    current.regular;
-
-  const color =
-    options?.color ||
-    DARK_GRAY;
-
-  const lineHeight =
-    options?.lineHeight ||
-    size + 4;
-
-  const maxWidth =
-    options?.maxWidth ||
-    current.width -
-      current.margin * 2;
-
-  const lines =
-    wrapText(
-      text,
-      font,
-      size,
-      maxWidth
-    );
-
-  for (
-    const line of lines
-  ) {
-    current =
-      ensureSpace(
-        current,
-        lineHeight + 8
-      );
-
-    if (line) {
-      current.page.drawText(
-        line,
-        {
-          x:
-            current.margin,
-          y:
-            current.y,
-          size,
-          font,
-          color,
-        }
-      );
-    }
-
-    current.y -=
-      lineHeight;
-  }
-
-  return current;
-}
-
-function drawSectionTitle(
-  ctx: PDFContext,
-  number: string,
-  title: string
-): PDFContext {
-  let current =
-    ensureSpace(
-      ctx,
-      60
-    );
-
-  current.page.drawRectangle(
-    {
-      x:
-        current.margin,
-      y:
-        current.y - 5,
-      width: 25,
-      height: 25,
-      color: RED,
-    }
-  );
-
-  current.page.drawText(
-    number,
-    {
-      x:
-        current.margin + 7,
-      y:
-        current.y + 2,
-      size: 8,
-      font: current.bold,
-      color: WHITE,
-    }
-  );
-
-  current.page.drawText(
-    title.toUpperCase(),
-    {
-      x:
-        current.margin + 35,
-      y:
-        current.y + 2,
-      size: 10,
-      font: current.bold,
-      color: BLACK,
-    }
-  );
-
-  current.y -= 38;
-
-  current.page.drawLine(
-    {
-      start: {
-        x:
-          current.margin,
-        y:
-          current.y,
-      },
-      end: {
-        x:
-          current.width -
-          current.margin,
-        y:
-          current.y,
-      },
-      thickness: 0.6,
-      color: LIGHT_GRAY,
-    }
-  );
-
-  current.y -= 18;
-
-  return current;
-}
-
-function drawField(
-  ctx: PDFContext,
-  label: string,
-  value: unknown
-): PDFContext {
-  let current =
-    ensureSpace(
-      ctx,
-      50
-    );
-
-  const text =
-    formatValue(
-      value
-    );
-
-  current.page.drawText(
-    label,
-    {
-      x:
-        current.margin,
-      y:
-        current.y,
-      size: 7.5,
-      font: current.bold,
-      color: MID_GRAY,
-    }
-  );
-
-  current.y -= 13;
-
-  const lines =
-    wrapText(
-      text,
-      current.regular,
-      9,
-      current.width -
-        current.margin * 2
-    );
-
-  for (
-    const line of lines
-  ) {
-    current =
-      ensureSpace(
-        current,
-        16
-      );
-
-    current.page.drawText(
-      line,
-      {
-        x:
-          current.margin,
-        y:
-          current.y,
-        size: 9,
-        font:
-          current.regular,
-        color:
-          DARK_GRAY,
-      }
-    );
-
-    current.y -= 13;
-  }
-
-  current.y -= 7;
-
-  return current;
-}
-
-function drawFieldGrid(
-  ctx: PDFContext,
-  fields: Array<
-    [string, unknown]
-  >
-): PDFContext {
-  let current = ctx;
-
-  for (
-    let i = 0;
-    i < fields.length;
-    i += 2
-  ) {
-    current =
-      ensureSpace(
-        current,
-        50
-      );
-
-    const left =
-      fields[i];
-
-    const right =
-      fields[i + 1];
-
-    const gap = 18;
-
-    const columnWidth =
-      (
-        current.width -
-        current.margin * 2 -
-        gap
-      ) / 2;
-
-    const startY =
-      current.y;
-
-    current.page.drawText(
-      left[0],
-      {
-        x:
-          current.margin,
-        y:
-          startY,
-        size: 7.5,
-        font:
-          current.bold,
-        color:
-          MID_GRAY,
-      }
-    );
-
-    const leftLines =
-      wrapText(
-        formatValue(
-          left[1]
-        ),
-        current.regular,
-        9,
-        columnWidth
-      );
-
-    for (
-      let lineIndex = 0;
-      lineIndex <
-      leftLines.length;
-      lineIndex++
-    ) {
-      current.page.drawText(
-        leftLines[
-          lineIndex
-        ],
-        {
-          x:
-            current.margin,
-          y:
-            startY -
-            13 -
-            lineIndex *
-              13,
-          size: 9,
-          font:
-            current.regular,
-          color:
-            DARK_GRAY,
-        }
-      );
-    }
-
-    if (right) {
-      const rightX =
-        current.margin +
-        columnWidth +
-        gap;
-
-      current.page.drawText(
-        right[0],
-        {
-          x: rightX,
-          y: startY,
-          size: 7.5,
-          font:
-            current.bold,
-          color:
-            MID_GRAY,
-        }
-      );
-
-      const rightLines =
-        wrapText(
-          formatValue(
-            right[1]
-          ),
-          current.regular,
-          9,
-          columnWidth
-        );
-
-      for (
-        let lineIndex = 0;
-        lineIndex <
-        rightLines.length;
-        lineIndex++
-      ) {
-        current.page.drawText(
-          rightLines[
-            lineIndex
-          ],
-          {
-            x:
-              rightX,
-            y:
-              startY -
-              13 -
-              lineIndex *
-                13,
-            size: 9,
-            font:
-              current.regular,
-            color:
-              DARK_GRAY,
-          }
-        );
-      }
-    }
-
-    const rightLineCount =
-      right
-        ? wrapText(
-            formatValue(
-              right[1]
-            ),
-            current.regular,
-            9,
-            columnWidth
-          ).length
-        : 1;
-
-    const maxLines =
-      Math.max(
-        leftLines.length,
-        rightLineCount
-      );
-
-    current.y =
-      startY -
-      13 -
-      maxLines * 13 -
-      12;
-  }
-
-  return current;
-}
-
-function drawObjectFields(
-  ctx: PDFContext,
-  object: AnyObject,
-  options?: {
-    exclude?: string[];
-    maxDepth?: number;
-  }
-): PDFContext {
-  let current = ctx;
-
-  const excluded =
-    new Set(
-      options?.exclude ||
-        []
-    );
-
-  const maxDepth =
-    options?.maxDepth ??
-    2;
-
-  function render(
-    valueObject: AnyObject,
-    depth: number
-  ) {
-    const entries =
-      Object.entries(
-        valueObject
-      ).filter(
-        ([key, value]) =>
-          !excluded.has(key) &&
-          value !==
-            undefined &&
-          value !== null &&
-          value !== ""
-      );
-
-    for (
-      const [key, value] of
-        entries
-    ) {
-      if (
-        depth < maxDepth &&
-        value &&
-        typeof value ===
-          "object" &&
-        !Array.isArray(value)
-      ) {
-        current =
-          drawSubheading(
-            current,
-            titleCaseKey(
-              key
-            )
-          );
-
-        render(
-          value,
-          depth + 1
-        );
-
-        continue;
-      }
-
-      current =
-        drawField(
-          current,
-          titleCaseKey(
-            key
-          ),
-          value
-        );
-    }
-  }
-
-  render(
-    object,
-    0
-  );
-
-  return current;
-}
-
-function drawSubheading(
-  ctx: PDFContext,
-  title: string
-): PDFContext {
-  let current =
-    ensureSpace(
-      ctx,
-      35
-    );
-
-  current.page.drawText(
-    title,
-    {
-      x:
-        current.margin,
-      y:
-        current.y,
-      size: 8.5,
-      font:
-        current.bold,
-      color: RED,
-    }
-  );
-
-  current.y -= 18;
-
-  return current;
-}
-
-function getSections(
-  type: BriefType,
-  form: AnyObject
-): Array<{
-  title: string;
-  fields?: Array<
-    [string, unknown]
-  >;
-  object?: AnyObject;
-  exclude?: string[];
-}> {
-  if (
-    type === "tv_unit"
-  ) {
-    return [
-      {
-        title:
-          "Project Information",
-        fields: [
-          [
-            "Project Name",
-            form.projectName,
-          ],
-          [
-            "Client Name",
-            form.clientName,
-          ],
-          [
-            "Project Location",
-            form.projectLocation,
-          ],
-          [
-            "Date",
-            form.date,
-          ],
-          [
-            "Project Type",
-            form.projectType,
-          ],
-          [
-            "Other Project Type",
-            form.projectTypeOther,
-          ],
-        ],
-      },
-      {
-        title:
-          "General Design Requirements",
-        fields: [
-          [
-            "Design Goal",
-            form.designGoal,
-          ],
-          [
-            "Preferred Design Style",
-            form.designStyles,
-          ],
-          [
-            "Other Design Style",
-            form.designStyleOther,
-          ],
-          [
-            "Reference Images Available",
-            form.referenceImagesAvailable,
-          ],
-        ],
-      },
-      {
-        title:
-          "TV Requirements",
-        fields: [
-          [
-            "Existing TV",
-            form.hasTV,
-          ],
-          [
-            "TV Brand / Model",
-            form.tvBrandModel,
-          ],
-          [
-            "TV Width",
-            form.tvWidth,
-          ],
-          [
-            "TV Height",
-            form.tvHeight,
-          ],
-          [
-            "TV Depth",
-            form.tvDepth,
-          ],
-          [
-            "Preferred TV Size",
-            form.preferredTVSize,
-          ],
-          [
-            "TV Installation",
-            form.tvInstallation,
-          ],
-        ],
-      },
-      {
-        title:
-          "Storage Requirements",
-        fields: [
-          [
-            "Storage Required",
-            form.storageRequired,
-          ],
-          [
-            "Storage Types",
-            form.storageTypes,
-          ],
-          [
-            "Other Storage",
-            form.storageOther,
-          ],
-          [
-            "Storage Items",
-            form.storageItems,
-          ],
-          [
-            "Other Storage Items",
-            form.storageItemsOther,
-          ],
-        ],
-      },
-      {
-        title:
-          "Electronics & Cable Management",
-        fields: [
-          [
-            "Equipment",
-            form.equipment,
-          ],
-          [
-            "Other Equipment",
-            form.equipmentOther,
-          ],
-          [
-            "Cable Management",
-            form.cableManagement,
-          ],
-          [
-            "Equipment Visibility",
-            form.equipmentVisibility,
-          ],
-          [
-            "Special Electronics Requirements",
-            form.electronicsSpecialRequirements,
-          ],
-        ],
-      },
-      {
-        title:
-          "Design Features & Finishes",
-        fields: [
-          [
-            "Design Features",
-            form.designFeatures,
-          ],
-          [
-            "Other Design Feature",
-            form.designFeatureOther,
-          ],
-          [
-            "Wall Cladding Required",
-            form.wallCladdingRequired,
-          ],
-          [
-            "Wall Cladding Material",
-            form.wallCladdingMaterial,
-          ],
-          [
-            "Main Finish",
-            form.mainFinish,
-          ],
-          [
-            "Other Main Finish",
-            form.mainFinishOther,
-          ],
-        ],
-      },
-      {
-        title:
-          "Client Do Not Want",
-        fields: [
-          [
-            "Do Not Want",
-            form.doNotWant,
-          ],
-          [
-            "Other Do Not Want",
-            form.doNotWantOther,
-          ],
-        ],
-      },
-      {
-        title:
-          "Client Confirmation",
-        fields: [
-          [
-            "Information Checked",
-            form.informationChecked,
-          ],
-          [
-            "Client Requirements Confirmed",
-            form.clientRequirementsConfirmed,
-          ],
-          [
-            "Ready For Design",
-            form.readyForDesign,
-          ],
-          [
-            "Client Signature",
-            form.clientSignature,
-          ],
-        ],
-      },
-    ];
-  }
-
-  if (
-    type === "wardrobe"
-  ) {
-    return [
-      {
-        title:
-          "Project Information",
-        fields: [
-          [
-            "Project Name",
-            form.projectName,
-          ],
-          [
-            "Client Name",
-            form.clientName,
-          ],
-          [
-            "Project Location",
-            form.projectLocation,
-          ],
-          [
-            "Date",
-            form.date,
-          ],
-          [
-            "Person Handling Client",
-            form.personHandlingClient,
-          ],
-          [
-            "Project Type",
-            form.projectType,
-          ],
-          [
-            "Other Project Type",
-            form.projectTypeOther,
-          ],
-        ],
-      },
-      {
-        title:
-          "General Design Requirements",
-        fields: [
-          [
-            "Design Goal",
-            form.designGoal,
-          ],
-          [
-            "Preferred Design Style",
-            form.designStyles,
-          ],
-          [
-            "Other Design Style",
-            form.designStyleOther,
-          ],
-          [
-            "Reference Images Available",
-            form.referenceImagesAvailable,
-          ],
-        ],
-      },
-      {
-        title:
-          "Client Preferences",
-        fields: [
-          [
-            "Wardrobe Doors",
-            form.wardrobeDoors,
-          ],
-          [
-            "Door Finish",
-            form.doorFinish,
-          ],
-          [
-            "Glass Type",
-            form.glassType,
-          ],
-          [
-            "Handles",
-            form.handles,
-          ],
-          [
-            "Preferred Colour / Finish",
-            form.preferredColourFinish,
-          ],
-        ],
-      },
-      {
-        title:
-          "Storage Requirements",
-        fields: [
-          [
-            "Storage Needs",
-            form.storageNeeds,
-          ],
-          [
-            "Other Storage",
-            form.storageOther,
-          ],
-          [
-            "Hanging Requirements",
-            form.hangingRequirements,
-          ],
-          [
-            "Other Hanging Requirement",
-            form.hangingOther,
-          ],
-          [
-            "Drawers Required",
-            form.drawersRequired,
-          ],
-          [
-            "Open Shelves Required",
-            form.openShelvesRequired,
-          ],
-        ],
-      },
-      {
-        title:
-          "Ceiling, Loft & Access",
-        fields: [
-          [
-            "Reach Ceiling",
-            form.reachCeiling,
-          ],
-          [
-            "Loft Cabinets",
-            form.loftCabinets,
-          ],
-          [
-            "Loft Access",
-            form.loftAccess,
-          ],
-          [
-            "Other Loft Access",
-            form.loftAccessOther,
-          ],
-        ],
-      },
-      {
-        title:
-          "Lighting & Display",
-        fields: [
-          [
-            "Internal LED Lighting",
-            form.internalLedLighting,
-          ],
-          [
-            "Sensor Lighting",
-            form.sensorLighting,
-          ],
-          [
-            "Glass Display Sections",
-            form.glassDisplaySections,
-          ],
-          [
-            "Shoe Display",
-            form.shoeDisplay,
-          ],
-        ],
-      },
-      {
-        title:
-          "Special Requirements",
-        fields: [
-          [
-            "Special Requirements",
-            form.specialRequirements,
-          ],
-          [
-            "Other Special Requirement",
-            form.specialRequirementOther,
-          ],
-          [
-            "Central Island",
-            form.centralIsland,
-          ],
-          [
-            "Seating",
-            form.seating,
-          ],
-          [
-            "Vanity / Dressing Area",
-            form.vanityDressingArea,
-          ],
-        ],
-      },
-      {
-        title:
-          "Client Do Not Want",
-        fields: [
-          [
-            "Do Not Want",
-            form.doNotWant,
-          ],
-          [
-            "Other Do Not Want",
-            form.doNotWantOther,
-          ],
-        ],
-      },
-      {
-        title:
-          "Client Confirmation",
-        fields: [
-          [
-            "Information Checked",
-            form.informationChecked,
-          ],
-          [
-            "Ready For Design",
-            form.readyForDesign,
-          ],
-          [
-            "Client Signature",
-            form.clientSignature,
-          ],
-        ],
-      },
-    ];
-  }
-
-  if (
-    type === "kitchen"
-  ) {
-    return [
-      {
-        title:
-          "Project Information",
-        fields: [
-          [
-            "Project Name",
-            form.projectName,
-          ],
-          [
-            "Client Name",
-            form.clientName,
-          ],
-          [
-            "Project Location",
-            form.projectLocation,
-          ],
-          [
-            "Room / Area",
-            form.roomArea,
-          ],
-          [
-            "Designer",
-            form.designer,
-          ],
-          [
-            "Person Responsible for Client Communication",
-            form.communicationPerson,
-          ],
-        ],
-      },
-      {
-        title:
-          "Client Requirements",
-        fields: [
-          [
-            "Design Goal",
-            form.designGoal,
-          ],
-          [
-            "Main Requirements",
-            form.mainRequirements,
-          ],
-          [
-            "Preferred Design Style",
-            form.designStyles,
-          ],
-          [
-            "Other Design Style",
-            form.designStyleOther,
-          ],
-          [
-            "Reference Images Available",
-            form.referenceImagesAvailable,
-          ],
-        ],
-      },
-      {
-        title:
-          "Kitchen Requirements",
-        fields: [
-          [
-            "Built-in Cabinetry",
-            form.builtInCabinetry,
-          ],
-          [
-            "Owns Appliances",
-            form.ownsAppliances,
-          ],
-          [
-            "Sink Provided By",
-            form.sinkProvidedBy,
-          ],
-          [
-            "Kitchen Layout",
-            form.kitchenLayout,
-          ],
-        ],
-      },
-      {
-        title:
-          "Additional Kitchen Information",
-        object: form,
-        exclude: [
-          "projectName",
-          "clientName",
-          "projectLocation",
-          "roomArea",
-          "designer",
-          "communicationPerson",
-          "designGoal",
-          "mainRequirements",
-          "designStyles",
-          "designStyleOther",
-          "referenceImagesAvailable",
-          "completed",
-          "submitted",
-          "completedAt",
-          "referenceImages",
-          "client",
-        ],
-      },
-    ];
-  }
-
-  return [
-    {
-      title:
-        "Full Interior Project Information",
-      fields: [
-        [
-          "Project Name",
-          form.projectName,
-        ],
-        [
-          "Project Location",
-          form.projectLocation,
-        ],
-        [
-          "Project Type",
-          form.projectType,
-        ],
-        [
-          "Project Status",
-          form.projectStatus,
-        ],
-        [
-          "Client Name",
-          form.clientName,
-        ],
-      ],
-    },
-    {
-      title:
-        "Client Requirements",
-      object: form,
-      exclude: [
-        "projectName",
-        "projectLocation",
-        "projectType",
-        "projectStatus",
-        "clientName",
-        "client",
-        "completed",
-        "submitted",
-        "completedAt",
-        "referenceImages",
-        "currentSection",
-      ],
-    },
-  ];
-}
-
-/**
- * Load the actual KBX SVG logo from:
- *
- * public/kbx-logo.svg
- *
- * SVG cannot be embedded directly by pdf-lib,
- * so Sharp converts it to a high-resolution PNG
- * in memory before pdf-lib embeds it.
- */
-async function loadPdfLogo(
-  pdf: PDFDocument
-): Promise<PDFImage | null> {
-  const logoPath =
-    path.join(
-      process.cwd(),
-      "public",
-      "kbx-logo.svg"
-    );
-
-  try {
-    const logoBytes =
-      await fs.readFile(
-        logoPath
-      );
-
-    const pngBytes =
-      await sharp(
-        logoBytes
-      )
-        .png()
-        .toBuffer();
-
-    return await pdf.embedPng(
-      pngBytes
-    );
-  } catch (error) {
-    console.error(
-      "KBX PDF logo could not be loaded:",
-      {
-        logoPath,
-        error,
-      }
-    );
-
-    return null;
-  }
-}
-
-/**
- * Large centered KBX logo at the top
- * of the first PDF cover page.
- */
-function drawLogoOnCover(
-  page: PDFPage,
-  logo: PDFImage | null,
-  width: number,
-  height: number
-) {
-  if (!logo) {
-    return;
-  }
-
-  const maxWidth = 360;
-  const maxHeight = 125;
-
-  const scale =
-    Math.min(
-      maxWidth /
-        logo.width,
-      maxHeight /
-        logo.height
-    );
-
-  const logoWidth =
-    logo.width * scale;
-
-  const logoHeight =
-    logo.height * scale;
-
-  page.drawImage(
-    logo,
-    {
-      x:
-        (
-          width -
-          logoWidth
-        ) / 2,
-
-      y:
-        height -
-        65 -
-        logoHeight,
-
-      width:
-        logoWidth,
-
-      height:
-        logoHeight,
-    }
-  );
-}
-
-function drawCoverPage(
-  ctx: PDFContext,
-  type: BriefType,
-  briefData: AnyObject
-): PDFContext {
-  let current = ctx;
-
-  const projectName =
-    getProjectName(
-      briefData
-    );
-
-  const clientName =
-    getClientName(
-      briefData
-    );
-
-  const location =
-    cleanText(
-      getForm(
-        briefData
-      ).projectLocation
-    ) ||
-    "Not provided";
-
-  /*
-   * The logo now occupies the
-   * upper portion of the cover.
-   *
-   * The title begins lower so it
-   * never overlaps the logo.
-   */
-
-  current.page.drawText(
-    getBriefLabel(type),
-    {
-      x:
-        current.margin,
-
-      y:
-        current.height -
-        245,
-
-      size: 27,
-
-      font:
-        current.bold,
-
-      color:
-        BLACK,
-    }
-  );
-
-  current.page.drawText(
-    "CLIENT DESIGN BRIEF",
-    {
-      x:
-        current.margin,
-
-      y:
-        current.height -
-        272,
-
-      size: 8,
-
-      font:
-        current.regular,
-
-      color:
-        MID_GRAY,
-    }
-  );
-
-  current.page.drawText(
-    `DOCUMENT ${getBriefCode(
-      type
-    )}`,
-    {
-      x:
-        current.width -
-        current.margin -
-        65,
-
-      y:
-        current.height -
-        272,
-
-      size: 7,
-
-      font:
-        current.bold,
-
-      color:
-        RED,
-    }
-  );
-
-  current.page.drawLine({
-    start: {
-      x:
-        current.margin,
-
-      y:
-        current.height -
-        300,
-    },
-
-    end: {
-      x:
-        current.width -
-        current.margin,
-
-      y:
-        current.height -
-        300,
-    },
-
-    thickness: 1,
-
-    color:
-      LIGHT_GRAY,
-  });
-
-  let infoY =
-    current.height -
-    350;
-
-  const coverFields =
-    [
-      [
-        "Project",
-        projectName,
-      ],
-      [
-        "Client",
-        clientName,
-      ],
-      [
-        "Location",
-        location,
-      ],
-      [
-        "Document Type",
-        getBriefLabel(
-          type
-        ),
-      ],
-    ];
-
-  for (
-    const [label, value] of
-      coverFields
-  ) {
-    current.page.drawText(
-      label,
-      {
-        x:
-          current.margin,
-
-        y:
-          infoY,
-
-        size: 7,
-
-        font:
-          current.bold,
-
-        color:
-          MID_GRAY,
-      }
-    );
-
-    const valueText =
-      cleanText(
-        value
-      ) ||
-      "Not provided";
-
-    current.page.drawText(
-      valueText,
-      {
-        x:
-          current.margin +
-          95,
-
-        y:
-          infoY,
-
-        size: 10,
-
-        font:
-          current.regular,
-
-        color:
-          DARK_GRAY,
-      }
-    );
-
-    infoY -= 30;
-  }
-
-  current.page.drawRectangle(
-    {
-      x:
-        current.margin,
-
-      y: 80,
-
-      width:
-        current.width -
-        current.margin * 2,
-
-      height: 52,
-
-      color:
-        VERY_LIGHT,
-    }
-  );
-
-  current.page.drawText(
-    "Prepared by KBX Spatial Atelier",
-    {
-      x:
-        current.margin +
-        18,
-
-      y: 111,
-
-      size: 8,
-
-      font:
-        current.bold,
-
-      color:
-        DARK_GRAY,
-    }
-  );
-
-  current.page.drawText(
-    "Interior Design • Interior Architecture • Bespoke Space",
-    {
-      x:
-        current.margin +
-        18,
-
-      y: 94,
-
-      size: 7,
-
-      font:
-        current.regular,
-
-      color:
-        MID_GRAY,
-    }
-  );
-
-  return current;
-}
-
-async function buildPDF(
-  type: BriefType,
-  briefData: AnyObject
-): Promise<Uint8Array> {
-  const pdf =
-    await PDFDocument.create();
-
-  const regular =
-    await pdf.embedFont(
-      StandardFonts.Helvetica
-    );
-
-  const bold =
-    await pdf.embedFont(
-      StandardFonts.HelveticaBold
-    );
-
-  const width =
-    595.28;
-
-  const height =
-    841.89;
-
-  const margin =
-    45;
-
-  let ctx: PDFContext =
-    {
-      pdf,
-
-      page:
-        pdf.addPage([
-          width,
-          height,
-        ]),
-
-      regular,
-
-      bold,
-
-      width,
-
-      height,
-
-      margin,
-
-      y:
-        height - 95,
-    };
-
-  /*
-   * Load and draw the real
-   * public/kbx-logo.svg logo.
-   */
-  const logo =
-    await loadPdfLogo(
-      pdf
-    );
-
-  drawLogoOnCover(
-    ctx.page,
-    logo,
-    width,
-    height
-  );
-
-  ctx =
-    drawCoverPage(
-      ctx,
-      type,
-      briefData
-    );
-
-  ctx =
-    addPage(ctx);
-
-  const sections =
-    getSections(
-      type,
-      getForm(
-        briefData
-      )
-    );
-
-  let sectionNumber =
-    1;
-
-  for (
-    const section of
-      sections
-  ) {
-    ctx =
-      drawSectionTitle(
-        ctx,
-
-        String(
-          sectionNumber
-        ).padStart(
-          2,
-          "0"
-        ),
-
-        section.title
-      );
-
-    if (
-      section.fields &&
-      section.fields.length >
-        0
-    ) {
-      ctx =
-        drawFieldGrid(
-          ctx,
-          section.fields
-        );
-    }
-
-    if (
-      section.object
-    ) {
-      ctx =
-        drawObjectFields(
-          ctx,
-          section.object,
-          {
-            exclude:
-              section.exclude,
-
-            maxDepth: 2,
-          }
-        );
-    }
-
-    ctx.y -= 10;
-
-    sectionNumber++;
-  }
-
-  ctx =
-    drawSectionTitle(
-      ctx,
-      "99",
-      "Submission Information"
-    );
-
-  ctx =
-    drawFieldGrid(
-      ctx,
-      [
-        [
-          "Brief Type",
-          getBriefLabel(
-            type
-          ),
-        ],
-        [
-          "Submission Date",
-          cleanText(
-            briefData.completedAt
-          ) ||
-            new Date()
-              .toISOString(),
-        ],
-        [
-          "Client ID",
-          getClientId(
-            briefData
-          ) ||
-            "Not provided",
-        ],
-        [
-          "Submitted",
-          briefData.submitted !==
-            false,
-        ],
-      ]
-    );
-
-  const pages =
-    pdf.getPages();
-
-  for (
-    let pageIndex = 0;
-    pageIndex <
-    pages.length;
-    pageIndex++
-  ) {
-    const page =
-      pages[
-        pageIndex
-      ];
-
-    page.drawLine({
-      start: {
-        x: 45,
-        y: 35,
-      },
-
-      end: {
-        x:
-          width - 45,
-        y: 35,
-      },
-
-      thickness: 0.6,
-
-      color:
-        LIGHT_GRAY,
-    });
-
-    page.drawText(
-      "KBX Spatial Atelier",
-      {
-        x: 45,
-        y: 22,
-        size: 7,
-        font: bold,
-        color: MID_GRAY,
-      }
-    );
-
-    page.drawText(
-      `Page ${
-        pageIndex + 1
-      } of ${
-        pages.length
-      }`,
-      {
-        x:
-          width - 95,
-        y: 22,
-        size: 7,
-        font: regular,
-        color: MID_GRAY,
-      }
-    );
-  }
-
-  return await pdf.save();
-}
-
-async function appendReferenceImages(
-  pdfBytes: Uint8Array,
-  images: ReferenceImage[]
-): Promise<Uint8Array> {
-  if (
-    images.length === 0
-  ) {
-    return pdfBytes;
-  }
-
-  const pdf =
-    await PDFDocument.load(
-      pdfBytes
-    );
-
-  const regular =
-    await pdf.embedFont(
-      StandardFonts.Helvetica
-    );
-
-  const bold =
-    await pdf.embedFont(
-      StandardFonts.HelveticaBold
-    );
-
-  const width =
-    595.28;
-
-  const height =
-    841.89;
-
-  const margin =
-    45;
-
-  let page =
-    pdf.addPage([
-      width,
-      height,
-    ]);
-
-  let y =
-    height - 65;
-
-  page.drawText(
-    "REFERENCE IMAGES",
-    {
-      x: margin,
-      y,
-      size: 14,
-      font: bold,
-      color: BLACK,
-    }
-  );
-
-  y -= 22;
-
-  page.drawText(
-    "Client-provided visual references",
-    {
-      x: margin,
-      y,
-      size: 8,
-      font: regular,
-      color: MID_GRAY,
-    }
-  );
-
-  y -= 30;
-
-  let imageCount =
-    0;
-
-  for (
-    const reference of
-      images.slice(
-        0,
-        12
-      )
-  ) {
-    let embedded:
-      | PDFImage
-      | null = null;
-
-    try {
-      const imageType =
-        reference.type
-          .toLowerCase();
-
-      if (
-        imageType ===
-          "image/png" ||
-        reference.name
-          .toLowerCase()
-          .endsWith(
-            ".png"
-          )
-      ) {
-        embedded =
-          await pdf.embedPng(
-            reference.bytes
-          );
-      } else if (
-        imageType ===
-          "image/jpeg" ||
-        imageType ===
-          "image/jpg" ||
-        reference.name
-          .toLowerCase()
-          .endsWith(
-            ".jpg"
-          ) ||
-        reference.name
-          .toLowerCase()
-          .endsWith(
-            ".jpeg"
-          )
-      ) {
-        embedded =
-          await pdf.embedJpg(
-            reference.bytes
-          );
-      }
-    } catch {
-      embedded = null;
-    }
-
-    if (!embedded) {
-      continue;
-    }
-
-    const maxWidth =
-      width -
-      margin * 2;
-
-    const maxHeight =
-      330;
-
-    const scale =
-      Math.min(
-        maxWidth /
-          embedded.width,
-
-        maxHeight /
-          embedded.height,
-
-        1
-      );
-
-    const displayWidth =
-      embedded.width *
-      scale;
-
-    const displayHeight =
-      embedded.height *
-      scale;
-
-    if (
-      y -
-        displayHeight -
-        45 <
-      45
-    ) {
-      page =
-        pdf.addPage([
-          width,
-          height,
-        ]);
-
-      y =
-        height - 65;
-
-      page.drawText(
-        "REFERENCE IMAGES",
-        {
-          x: margin,
-          y,
-          size: 14,
-          font: bold,
-          color: BLACK,
-        }
-      );
-
-      y -= 25;
-    }
-
-    const x =
-      margin +
-      (
-        maxWidth -
-        displayWidth
-      ) /
-        2;
-
-    page.drawImage(
-      embedded,
-      {
-        x,
-
-        y:
-          y -
-          displayHeight,
-
-        width:
-          displayWidth,
-
-        height:
-          displayHeight,
-      }
-    );
-
-    y -=
-      displayHeight +
-      14;
-
-    page.drawText(
-      `${
-        imageCount + 1
-      }. ${
-        reference.name
-      }`,
-      {
-        x: margin,
-        y,
-        size: 7.5,
-        font: regular,
-        color: MID_GRAY,
-      }
-    );
-
-    y -= 25;
-
-    imageCount++;
-  }
-
-  const pages =
-    pdf.getPages();
-
-  for (
-    let pageIndex = 0;
-    pageIndex <
-    pages.length;
-    pageIndex++
-  ) {
-    const currentPage =
-      pages[
-        pageIndex
-      ];
-
-    currentPage.drawLine({
-      start: {
-        x: 45,
-        y: 35,
-      },
-
-      end: {
-        x:
-          width - 45,
-        y: 35,
-      },
-
-      thickness: 0.6,
-
-      color:
-        LIGHT_GRAY,
-    });
-
-    currentPage.drawText(
-      "KBX Spatial Atelier",
-      {
-        x: 45,
-        y: 22,
-        size: 7,
-        font: bold,
-        color: MID_GRAY,
-      }
-    );
-
-    currentPage.drawText(
-      `Page ${
-        pageIndex + 1
-      } of ${
-        pages.length
-      }`,
-      {
-        x:
-          width - 95,
-        y: 22,
-        size: 7,
-        font: regular,
-        color: MID_GRAY,
-      }
-    );
-  }
-
-  return await pdf.save();
-}
-
-async function readReferenceImages(
-  formData: FormData
-): Promise<ReferenceImage[]> {
-  const entries =
-    formData.getAll(
-      "referenceImages"
-    );
-
-  const images:
-    ReferenceImage[] = [];
-
-  for (
-    const entry of
-      entries
-  ) {
-    if (
-      !(entry instanceof File)
+      key === "client" ||
+      key === "form" ||
+      key === "files" ||
+      key === "attachments"
     ) {
       continue;
     }
 
+    const label = prefix ? `${prefix} / ${key}` : key;
+
     if (
-      !entry.type.startsWith(
-        "image/"
-      )
+      rawValue &&
+      typeof rawValue === "object" &&
+      !Array.isArray(rawValue)
     ) {
+      result.push(...flattenObject(rawValue, label));
       continue;
     }
 
-    if (
-      entry.size >
-      5 * 1024 * 1024
-    ) {
-      continue;
+    const formatted = formatValue(rawValue);
+
+    if (formatted) {
+      result.push({
+        label,
+        value: formatted,
+      });
     }
-
-    const bytes =
-      new Uint8Array(
-        await entry.arrayBuffer()
-      );
-
-    images.push({
-      file: entry,
-      name:
-        entry.name ||
-        `reference-${
-          images.length + 1
-        }`,
-      type: entry.type,
-      bytes,
-    });
-  }
-
-  return images;
-}
-
-function getSupabase() {
-  const url =
-    process.env
-      .NEXT_PUBLIC_SUPABASE_URL;
-
-  const serviceRoleKey =
-    process.env
-      .SUPABASE_SERVICE_ROLE_KEY;
-
-  if (!url) {
-    throw new Error(
-      "NEXT_PUBLIC_SUPABASE_URL is not configured."
-    );
-  }
-
-  if (!serviceRoleKey) {
-    throw new Error(
-      "SUPABASE_SERVICE_ROLE_KEY is not configured."
-    );
-  }
-
-  return createClient(
-    url,
-    serviceRoleKey,
-    {
-      auth: {
-        autoRefreshToken:
-          false,
-
-        persistSession:
-          false,
-      },
-    }
-  );
-}
-
-async function savePdfToSupabase(
-  pdfBytes: Uint8Array,
-  filename: string,
-  briefData: AnyObject,
-  type: BriefType
-) {
-  const supabase =
-    getSupabase();
-
-  const clientId =
-    getClientId(
-      briefData
-    );
-
-  const clientName =
-    getClientName(
-      briefData
-    );
-
-  const clientEmail =
-    getClientEmail(
-      briefData
-    );
-
-  const projectName =
-    getProjectName(
-      briefData
-    );
-
-  const clientFolder =
-    safeFilename(
-      clientId ||
-        clientEmail ||
-        clientName
-    );
-
-  const timestamp =
-    Date.now();
-
-  const storagePath =
-    `briefs/${clientFolder}/${type}/${timestamp}_${filename}`;
-
-  const {
-    error:
-      uploadError,
-  } =
-    await supabase.storage
-      .from(
-        STORAGE_BUCKET
-      )
-      .upload(
-        storagePath,
-        Buffer.from(
-          pdfBytes
-        ),
-        {
-          contentType:
-            "application/pdf",
-
-          upsert:
-            true,
-        }
-      );
-
-  if (
-    uploadError
-  ) {
-    throw new Error(
-      `Supabase Storage upload failed: ${uploadError.message}`
-    );
-  }
-
-  const {
-    data:
-      publicUrlData,
-  } =
-    supabase.storage
-      .from(
-        STORAGE_BUCKET
-      )
-      .getPublicUrl(
-        storagePath
-      );
-
-  const pdfUrl =
-    publicUrlData
-      ?.publicUrl ||
-    "";
-
-  if (!pdfUrl) {
-    throw new Error(
-      "The PDF was uploaded but Supabase did not return a public URL."
-    );
-  }
-
-  const documentType =
-    getDocumentType(
-      type
-    );
-
-  const documentName =
-    `${getBriefLabel(
-      type
-    )} — ${projectName}`;
-
-  const documentPayload =
-    {
-      client_id:
-        clientId ||
-        null,
-
-      client_name:
-        clientName ||
-        null,
-
-      client_email:
-        clientEmail ||
-        null,
-
-      project_name:
-        projectName ||
-        null,
-
-      document_name:
-        documentName,
-
-      document_type:
-        documentType,
-
-      storage_path:
-        storagePath,
-
-      mime_type:
-        "application/pdf",
-
-      file_size:
-        pdfBytes.byteLength,
-
-      created_at:
-        new Date()
-          .toISOString(),
-
-      file_name:
-        filename,
-
-      file_path:
-        storagePath,
-
-      file_url:
-        pdfUrl,
-
-      title:
-        documentName,
-    };
-
-  const {
-    data:
-      documentRecord,
-    error:
-      documentError,
-  } =
-    await supabase
-      .from(
-        "client_documents"
-      )
-      .insert(
-        documentPayload
-      )
-      .select()
-      .single();
-
-  if (
-    documentError
-  ) {
-    throw new Error(
-      `Client document record creation failed: ${documentError.message}`
-    );
-  }
-
-  return {
-    pdfUrl,
-
-    pdfPath:
-      storagePath,
-
-    documentRecord,
-
-    documentType,
-
-    documentName,
-
-    fileName:
-      filename,
-
-    fileSize:
-      pdfBytes.byteLength,
-  };
-}
-
-async function sendEmail(
-  resend: Resend,
-  options: {
-    to: string;
-    subject: string;
-    heading: string;
-    message: string;
-    filename: string;
-    pdfBytes: Uint8Array;
-  }
-) {
-  if (!options.to) {
-    throw new Error(
-      "No recipient email address was provided."
-    );
-  }
-
-  const result =
-    await resend.emails.send(
-      {
-        from:
-          getFromEmail(),
-
-        to: [
-          options.to,
-        ],
-
-        subject:
-          options.subject,
-
-        html: `
-          <div style="font-family:Arial,Helvetica,sans-serif;background:#f7f7f5;padding:32px;">
-            <div style="max-width:680px;margin:0 auto;background:#ffffff;padding:36px;border:1px solid #e8e8e5;">
-
-              <div style="font-size:11px;letter-spacing:2px;font-weight:700;color:#910B0A;text-transform:uppercase;">
-                KBX Spatial Atelier
-              </div>
-
-              <h1 style="font-size:26px;margin:18px 0 10px;color:#111111;">
-                ${options.heading}
-              </h1>
-
-              <p style="font-size:14px;line-height:1.7;color:#555555;">
-                ${options.message}
-              </p>
-
-              <div style="margin-top:28px;padding:18px;background:#f7f7f5;border-left:3px solid #910B0A;">
-                <div style="font-size:12px;font-weight:700;color:#222222;">
-                  Attached document
-                </div>
-
-                <div style="font-size:12px;color:#777777;margin-top:5px;">
-                  ${options.filename}
-                </div>
-              </div>
-
-              <p style="font-size:11px;line-height:1.6;color:#999999;margin-top:30px;">
-                KBX Spatial Atelier<br/>
-                Interior Design • Interior Architecture • Bespoke Space
-              </p>
-
-            </div>
-          </div>
-        `,
-
-        attachments: [
-          {
-            filename:
-              options.filename,
-
-            content:
-              Buffer.from(
-                options.pdfBytes
-              ).toString(
-                "base64"
-              ),
-          },
-        ],
-      }
-    );
-
-  if (
-    result.error
-  ) {
-    throw new Error(
-      `Email delivery failed: ${result.error.message}`
-    );
   }
 
   return result;
 }
 
-export async function POST(
-  request: Request
+function sanitizeFileName(value: string): string {
+  return value
+    .replace(/[^a-zA-Z0-9._-]+/g, "-")
+    .replace(/-+/g, "-")
+    .replace(/^-|-$/g, "")
+    .slice(0, 120);
+}
+
+async function generatePdf(
+  briefData: AnyObject,
+  documentType: string
+): Promise<Buffer> {
+  return new Promise((resolve, reject) => {
+    try {
+      const doc = new PDFDocument({
+        size: "A4",
+        margin: 50,
+      });
+
+      const chunks: Buffer[] = [];
+
+      doc.on("data", (chunk: Buffer) => {
+        chunks.push(chunk);
+      });
+
+      doc.on("end", () => {
+        resolve(Buffer.concat(chunks));
+      });
+
+      doc.on("error", reject);
+
+      const clientName = getClientName(briefData);
+      const clientEmail = getClientEmail(briefData);
+      const projectName = getProjectName(briefData);
+      const projectLocation = getProjectLocation(briefData);
+
+      doc
+        .fontSize(20)
+        .font("Helvetica-Bold")
+        .text("KBX SPATIAL ATELIER", {
+          align: "center",
+        });
+
+      doc.moveDown(0.5);
+
+      doc
+        .fontSize(12)
+        .font("Helvetica")
+        .text("Client Project Brief", {
+          align: "center",
+        });
+
+      doc.moveDown(1.5);
+
+      doc
+        .fontSize(14)
+        .font("Helvetica-Bold")
+        .text(
+          documentType
+            .replace(/_/g, " ")
+            .replace(/\b\w/g, (letter) => letter.toUpperCase())
+        );
+
+      doc.moveDown(1);
+
+      doc.fontSize(10).font("Helvetica");
+
+      const projectInformation = [
+        ["Client", clientName],
+        ["Email", clientEmail],
+        ["Project", projectName],
+        ["Location", projectLocation],
+      ];
+
+      for (const [label, value] of projectInformation) {
+        if (!value) continue;
+
+        doc
+          .font("Helvetica-Bold")
+          .text(`${label}: `, {
+            continued: true,
+          })
+          .font("Helvetica")
+          .text(value);
+
+        doc.moveDown(0.3);
+      }
+
+      doc.moveDown(1);
+
+      const entries = flattenObject(briefData);
+
+      for (const entry of entries) {
+        if (!entry.value) continue;
+
+        if (doc.y > 720) {
+          doc.addPage();
+        }
+
+        doc
+          .fontSize(10)
+          .font("Helvetica-Bold")
+          .text(entry.label);
+
+        doc
+          .fontSize(9)
+          .font("Helvetica")
+          .text(entry.value, {
+            width: 490,
+          });
+
+        doc.moveDown(0.7);
+      }
+
+      doc.moveDown(1);
+
+      doc
+        .fontSize(8)
+        .font("Helvetica")
+        .text(
+          `Generated by KBX Spatial Atelier • ${new Date().toLocaleString(
+            "en-GH"
+          )}`,
+          {
+            align: "center",
+          }
+        );
+
+      doc.end();
+    } catch (error) {
+      reject(error);
+    }
+  });
+}
+
+async function savePdfToSupabase(
+  briefData: AnyObject,
+  documentType: string,
+  pdfBuffer: Buffer
 ) {
-  let briefType:
-    | BriefType
-    | null = null;
+  if (!supabase) {
+    throw new Error(
+      "Supabase is not configured. Please check NEXT_PUBLIC_SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY."
+    );
+  }
 
-  try {
-    const contentType =
-      request.headers.get(
-        "content-type"
-      ) || "";
+  const clientId = getClientId(briefData);
 
-    let briefData:
-      AnyObject;
+  /*
+   * IMPORTANT:
+   * A brief must always have a client ID.
+   *
+   * Previously the route allowed client_id to become null.
+   * That meant the brief could be successfully submitted but
+   * project-stages could not associate it with the client.
+   */
+  if (!clientId) {
+    throw new Error(
+      "Client ID is missing from the submitted brief. Please reopen the client portal and submit the brief again."
+    );
+  }
 
-    let referenceImages:
-      ReferenceImage[] =
-        [];
+  const clientName = getClientName(briefData);
+  const clientEmail = getClientEmail(briefData);
+  const projectName = getProjectName(briefData);
 
+  const pdfFileName = `${sanitizeFileName(
+    clientName || "client"
+  )}-${sanitizeFileName(documentType)}-${Date.now()}.pdf`;
+
+  const storagePath = `${sanitizeFileName(
+    clientId
+  )}/${pdfFileName}`;
+
+  const { error: uploadError } = await supabase.storage
+    .from("client-documents")
+    .upload(storagePath, pdfBuffer, {
+      contentType: "application/pdf",
+      upsert: true,
+    });
+
+  if (uploadError) {
+    throw new Error(
+      `Failed to upload PDF to Supabase Storage: ${uploadError.message}`
+    );
+  }
+
+  const { data: publicUrlData } = supabase.storage
+    .from("client-documents")
+    .getPublicUrl(storagePath);
+
+  const documentUrl = publicUrlData?.publicUrl || null;
+
+  const documentName =
+    projectName && projectName !== "Interior Design Project"
+      ? `${projectName} - ${documentType.replace(/_/g, " ")}`
+      : `${clientName} - ${documentType.replace(/_/g, " ")}`;
+
+  const { data: insertedDocument, error: insertError } = await supabase
+    .from("client_documents")
+    .insert({
+      client_id: clientId,
+      document_type: documentType,
+      document_name: documentName,
+      file_url: documentUrl,
+      storage_path: storagePath,
+      mime_type: "application/pdf",
+      file_size: pdfBuffer.length,
+      metadata: {
+        client_name: clientName,
+        client_email: clientEmail,
+        project_name: projectName,
+        source: "client_brief_submission",
+      },
+    })
+    .select()
+    .single();
+
+  if (insertError) {
     /*
-     * -------------------------------------------------------
-     * READ REQUEST
-     * -------------------------------------------------------
+     * If the database insert fails after storage succeeds,
+     * remove the uploaded file so we do not leave orphan files.
      */
-
-    if (
-      contentType.includes(
-        "multipart/form-data"
-      )
-    ) {
-      const formData =
-        await request.formData();
-
-      const rawBriefType =
-        formData.get(
-          "briefType"
-        );
-
-      const rawBriefData =
-        formData.get(
-          "briefData"
-        );
-
-      if (
-        typeof rawBriefData !==
-        "string"
-      ) {
-        return NextResponse.json(
-          {
-            success:
-              false,
-
-            error:
-              "Missing briefData.",
-          },
-          {
-            status: 400,
-          }
-        );
-      }
-
-      try {
-        briefData =
-          JSON.parse(
-            rawBriefData
-          );
-      } catch {
-        return NextResponse.json(
-          {
-            success:
-              false,
-
-            error:
-              "briefData is not valid JSON.",
-          },
-          {
-            status: 400,
-          }
-        );
-      }
-
-      briefType =
-        normalizeBriefType(
-          rawBriefType,
-          briefData
-        );
-
-      referenceImages =
-        await readReferenceImages(
-          formData
-        );
-    } else {
-      const body =
-        await request.json();
-
-      briefData =
-        body?.briefData ||
-        body;
-
-      briefType =
-        normalizeBriefType(
-          body?.briefType,
-          briefData
-        );
+    try {
+      await supabase.storage
+        .from("client-documents")
+        .remove([storagePath]);
+    } catch {
+      // Ignore cleanup failure.
     }
 
-    if (!briefType) {
+    throw new Error(
+      `Failed to save client document: ${insertError.message}`
+    );
+  }
+
+  return {
+    document: insertedDocument,
+    documentUrl,
+    storagePath,
+    clientId,
+  };
+}
+
+async function sendEmail(
+  briefData: AnyObject,
+  documentType: string,
+  pdfBuffer: Buffer,
+  documentName: string
+) {
+  const smtpHost = process.env.SMTP_HOST;
+  const smtpPort = process.env.SMTP_PORT;
+  const smtpUser = process.env.SMTP_USER;
+  const smtpPassword = process.env.SMTP_PASSWORD;
+  const emailFrom =
+    process.env.EMAIL_FROM ||
+    process.env.SMTP_FROM ||
+    smtpUser ||
+    "";
+
+  if (!smtpHost || !smtpPort || !smtpUser || !smtpPassword) {
+    console.warn(
+      "SMTP configuration is missing. Skipping email notification."
+    );
+
+    return {
+      sent: false,
+      skipped: true,
+    };
+  }
+
+  const clientEmail = getClientEmail(briefData);
+  const clientName = getClientName(briefData);
+  const projectName = getProjectName(briefData);
+
+  const transporter = nodemailer.createTransport({
+    host: smtpHost,
+    port: Number(smtpPort),
+    secure: Number(smtpPort) === 465,
+    auth: {
+      user: smtpUser,
+      pass: smtpPassword,
+    },
+  });
+
+  const recipients = new Set<string>();
+
+  if (clientEmail) {
+    recipients.add(clientEmail);
+  }
+
+  const adminEmail =
+    process.env.ADMIN_EMAIL ||
+    process.env.NOTIFICATION_EMAIL ||
+    "";
+
+  if (adminEmail) {
+    recipients.add(adminEmail);
+  }
+
+  if (recipients.size === 0) {
+    console.warn(
+      "No email recipients were configured. Skipping email notification."
+    );
+
+    return {
+      sent: false,
+      skipped: true,
+    };
+  }
+
+  await transporter.sendMail({
+    from: emailFrom,
+    to: Array.from(recipients).join(","),
+    subject: `KBX Spatial Atelier — ${documentType.replace(
+      /_/g,
+      " "
+    )} submitted`,
+    text: `A new client brief has been submitted.
+
+Client: ${clientName}
+Email: ${clientEmail || "Not provided"}
+Project: ${projectName}
+Brief Type: ${documentType.replace(/_/g, " ")}
+
+The submitted brief PDF is attached.`,
+    attachments: [
+      {
+        filename: documentName,
+        content: pdfBuffer,
+        contentType: "application/pdf",
+      },
+    ],
+  });
+
+  return {
+    sent: true,
+    skipped: false,
+  };
+}
+
+export async function POST(request: NextRequest) {
+  try {
+    const briefData = await request.json();
+
+    if (!briefData || typeof briefData !== "object") {
       return NextResponse.json(
         {
-          success:
-            false,
-
-          error:
-            "Unable to determine the brief type. Send briefType as kitchen, wardrobe, tv_unit, or full_interior.",
+          success: false,
+          error: "Invalid brief data.",
         },
-        {
-          status: 400,
-        }
+        { status: 400 }
       );
     }
 
-    const clientName =
-      getClientName(
-        briefData
-      );
+    const documentType = getDocumentType(briefData);
+    const clientId = getClientId(briefData);
+    const clientName = getClientName(briefData);
+    const clientEmail = getClientEmail(briefData);
+    const projectName = getProjectName(briefData);
 
-    const clientEmail =
-      getClientEmail(
-        briefData
+    if (!CLIENT_BRIEF_DOCUMENT_TYPES.includes(documentType)) {
+      return NextResponse.json(
+        {
+          success: false,
+          error: `Unsupported brief type: ${documentType}`,
+        },
+        { status: 400 }
       );
+    }
 
-    const clientId =
-      getClientId(
-        briefData
+    /*
+     * IMPORTANT FIX:
+     *
+     * Do not silently accept a brief without a client ID.
+     * Without this ID, the brief is stored but cannot be
+     * connected to the client's project stages.
+     */
+    if (!clientId) {
+      return NextResponse.json(
+        {
+          success: false,
+          error:
+            "The client ID is missing from the submitted brief. Please reopen the client portal and submit the brief again.",
+        },
+        { status: 400 }
       );
-
-    const projectName =
-      getProjectName(
-        briefData
-      );
+    }
 
     if (!clientEmail) {
-      return NextResponse.json(
-        {
-          success:
-            false,
-
-          error:
-            "The client email address is missing from the client profile.",
-        },
-        {
-          status: 400,
-        }
-      );
-    }
-
-    if (!clientId) {
       console.warn(
-        "Brief submitted without a client ID. The document will be stored with a NULL client_id until authentication is upgraded."
+        "Brief submitted without a client email. Continuing because email is not required for database association."
       );
     }
 
-    /*
-     * -------------------------------------------------------
-     * GENERATE PDF
-     * -------------------------------------------------------
-     */
+    console.log("Submitting client brief:", {
+      clientId,
+      clientName,
+      clientEmail,
+      projectName,
+      documentType,
+    });
 
-    let pdfBytes =
-      await buildPDF(
-        briefType,
-        briefData
-      );
+    const pdfBuffer = await generatePdf(
+      briefData,
+      documentType
+    );
 
-    if (
-      referenceImages.length >
-      0
-    ) {
-      pdfBytes =
-        await appendReferenceImages(
-          pdfBytes,
-          referenceImages
-        );
-    }
+    const saved = await savePdfToSupabase(
+      briefData,
+      documentType,
+      pdfBuffer
+    );
 
-    const filename =
-      `${safeFilename(
-        projectName
-      )}_${safeFilename(
-        getBriefLabel(
-          briefType
-        )
-      )}_Brief.pdf`;
+    const documentName =
+      saved.document?.document_name ||
+      `${clientName} - ${documentType.replace(/_/g, " ")}.pdf`;
 
-    /*
-     * -------------------------------------------------------
-     * SUPABASE STORAGE + DATABASE
-     * -------------------------------------------------------
-     */
+    let emailResult = {
+      sent: false,
+      skipped: true,
+    };
 
-    const storageResult =
-      await savePdfToSupabase(
-        pdfBytes,
-        filename,
+    try {
+      emailResult = await sendEmail(
         briefData,
-        briefType
+        documentType,
+        pdfBuffer,
+        documentName
       );
-
-    /*
-     * -------------------------------------------------------
-     * RESEND
-     * -------------------------------------------------------
-     */
-
-    const resendApiKey =
-      process.env
-        .RESEND_API_KEY;
-
-    if (!resendApiKey) {
-      throw new Error(
-        "RESEND_API_KEY is not configured."
+    } catch (emailError) {
+      /*
+       * Email failure should not make the database submission
+       * look unsuccessful. The document has already been saved.
+       */
+      console.error(
+        "Email notification failed:",
+        emailError
       );
     }
 
-    const resend =
-      new Resend(
-        resendApiKey
-      );
-
-    const allowExternalRecipients =
-      process.env
-        .RESEND_ALLOW_EXTERNAL_RECIPIENTS ===
-      "true";
-
-    const testRecipient =
-      process.env
-        .RESEND_TEST_RECIPIENT ||
-      KBX_EMAIL;
-
-    const actualClientRecipient =
-      allowExternalRecipients
-        ? clientEmail
-        : testRecipient;
-
-    /*
-     * Email KBX.
-     */
-
-    await sendEmail(
-      resend,
-      {
-        to:
-          KBX_EMAIL,
-
-        subject:
-          `New ${getBriefLabel(
-            briefType
-          )} Brief — ${projectName}`,
-
-        heading:
-          `New ${getBriefLabel(
-            briefType
-          )} brief submitted`,
-
-        message:
-          `${clientName} has submitted a ${getBriefLabel(
-            briefType
-          )} design brief for "${projectName}". The completed PDF is attached.`,
-
-        filename,
-
-        pdfBytes,
-      }
-    );
-
-    /*
-     * Email client.
-     */
-
-    await sendEmail(
-      resend,
-      {
-        to:
-          actualClientRecipient,
-
-        subject:
-          `Your ${getBriefLabel(
-            briefType
-          )} Design Brief — ${projectName}`,
-
-        heading:
-          "Your design brief has been received",
-
-        message:
-          `Thank you, ${clientName}. Your ${getBriefLabel(
-            briefType
-          )} brief for "${projectName}" has been successfully received by KBX Spatial Atelier. A copy of your completed brief is attached to this email.`,
-
-        filename,
-
-        pdfBytes,
-      }
-    );
-
-    /*
-     * -------------------------------------------------------
-     * SUCCESS
-     * -------------------------------------------------------
-     */
-
-    return NextResponse.json(
-      {
-        success:
-          true,
-
-        briefType,
-
-        briefLabel:
-          getBriefLabel(
-            briefType
-          ),
-
-        documentType:
-          storageResult.documentType,
-
-        documentName:
-          storageResult.documentName,
-
-        pdfGenerated:
-          true,
-
-        pdfStored:
-          true,
-
-        pdfUrl:
-          storageResult.pdfUrl,
-
-        pdfPath:
-          storageResult.pdfPath,
-
-        pdfFilename:
-          filename,
-
-        fileSize:
-          storageResult.fileSize,
-
-        documentId:
-          storageResult
-            .documentRecord
-            ?.id ||
-          null,
-
-        emailedToKBX:
-          true,
-
-        emailedToClient:
-          true,
-
-        clientId:
-          clientId ||
-          null,
-
-        clientEmail,
-
-        clientName,
-
-        projectName,
-
-        referenceImageCount:
-          referenceImages.length,
-      },
-      {
-        status: 200,
-      }
-    );
+    return NextResponse.json({
+      success: true,
+      message: "Client brief submitted successfully.",
+      clientId,
+      documentId: saved.document?.id || null,
+      documentType,
+      documentName,
+      documentUrl: saved.documentUrl,
+      storagePath: saved.storagePath,
+      emailSent: emailResult.sent,
+    });
   } catch (error) {
-    console.error(
-      "Unified brief submission error:",
-      error
-    );
+    console.error("SEND BRIEF ERROR:", error);
 
     const message =
       error instanceof Error
         ? error.message
-        : "An unexpected error occurred while processing the brief.";
+        : "An unexpected error occurred while submitting the brief.";
 
     return NextResponse.json(
       {
-        success:
-          false,
-
-        briefType,
-
-        error:
-          message,
-
-        pdfGenerated:
-          false,
-
-        pdfStored:
-          false,
-
-        emailedToKBX:
-          false,
-
-        emailedToClient:
-          false,
+        success: false,
+        error: message,
       },
-      {
-        status: 500,
-      }
+      { status: 500 }
     );
   }
 }
