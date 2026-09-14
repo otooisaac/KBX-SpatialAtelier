@@ -24,10 +24,20 @@ const TIME_SLOTS = [
 ];
 
 export default function ConsultationPage() {
-  const [method, setMethod] = useState<ConsultationMethod>("");
-  const [faceToFaceAccepted, setFaceToFaceAccepted] = useState(false);
-  const [confirmed, setConfirmed] = useState(false);
-  const [submitted, setSubmitted] = useState(false);
+  const [method, setMethod] =
+    useState<ConsultationMethod>("");
+
+  const [faceToFaceAccepted, setFaceToFaceAccepted] =
+    useState(false);
+
+  const [confirmed, setConfirmed] =
+    useState(false);
+
+  const [submitted, setSubmitted] =
+    useState(false);
+
+  const [submitting, setSubmitting] =
+    useState(false);
 
   const [form, setForm] = useState({
     fullName: "",
@@ -62,18 +72,29 @@ export default function ConsultationPage() {
     if (selectedMethod !== "face-to-face") {
       setFaceToFaceAccepted(false);
     }
+
+    setError("");
   }
 
-  function handleSubmit(event: FormEvent<HTMLFormElement>) {
+  async function handleSubmit(
+    event: FormEvent<HTMLFormElement>
+  ) {
     event.preventDefault();
+
     setError("");
+    setSubmitted(false);
 
     if (!method) {
-      setError("Please select your preferred consultation method.");
+      setError(
+        "Please select your preferred consultation method."
+      );
       return;
     }
 
-    if (method === "face-to-face" && !faceToFaceAccepted) {
+    if (
+      method === "face-to-face" &&
+      !faceToFaceAccepted
+    ) {
       setError(
         "Please confirm that you have read and understood the Face-to-Face Consultation terms."
       );
@@ -87,17 +108,73 @@ export default function ConsultationPage() {
       return;
     }
 
-    /*
-      The consultation submission will be connected to the
-      KBX email + PDF workflow after the page UI is confirmed.
-    */
+    try {
+      setSubmitting(true);
 
-    setSubmitted(true);
+      const response = await fetch(
+        "/api/send-consultation",
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            fullName: form.fullName,
+            email: form.email,
+            phone: form.phone,
+            areaCity: form.areaCity,
+            specificLocation:
+              form.specificLocation,
 
-    window.scrollTo({
-      top: 0,
-      behavior: "smooth",
-    });
+            method,
+
+            preferredDate:
+              form.preferredDate,
+            preferredTime:
+              form.preferredTime,
+
+            alternativeDate:
+              form.alternativeDate,
+            alternativeTime:
+              form.alternativeTime,
+
+            message: form.message,
+
+            faceToFaceAccepted,
+            confirmed,
+          }),
+        }
+      );
+
+      const result = await response.json();
+
+      if (!response.ok || !result.success) {
+        throw new Error(
+          result.error ||
+            "We could not submit your consultation request. Please try again."
+        );
+      }
+
+      setSubmitted(true);
+
+      window.scrollTo({
+        top: 0,
+        behavior: "smooth",
+      });
+    } catch (submissionError) {
+      console.error(
+        "Consultation submission error:",
+        submissionError
+      );
+
+      setError(
+        submissionError instanceof Error
+          ? submissionError.message
+          : "Something went wrong while submitting your consultation request. Please try again."
+      );
+    } finally {
+      setSubmitting(false);
+    }
   }
 
   return (
@@ -122,6 +199,7 @@ export default function ConsultationPage() {
               <p className="text-[15px] font-semibold tracking-tight">
                 KBX Spatial Atelier
               </p>
+
               <p className="text-[9px] font-medium tracking-[0.28em] text-black/45">
                 DESIGN STUDIO
               </p>
@@ -139,7 +217,9 @@ export default function ConsultationPage() {
             <Link
               href="/client-profile"
               className="rounded-full px-5 py-2.5 text-sm font-semibold text-white transition hover:opacity-90"
-              style={{ backgroundColor: RED }}
+              style={{
+                backgroundColor: RED,
+              }}
             >
               Client Profile
             </Link>
@@ -161,7 +241,9 @@ export default function ConsultationPage() {
 
             <p
               className="mb-4 text-xs font-semibold uppercase tracking-[0.25em]"
-              style={{ color: RED }}
+              style={{
+                color: RED,
+              }}
             >
               Consultation
             </p>
@@ -171,10 +253,12 @@ export default function ConsultationPage() {
             </h1>
 
             <p className="mt-6 max-w-[700px] text-base leading-7 text-black/60 sm:text-lg">
-              Book a free consultation with KBX Spatial Atelier to discuss
-              your ideas, requirements and the direction of your project.
-              We&apos;ll use the consultation to understand what you need and
-              guide you toward the right next step.
+              Book a free consultation with KBX Spatial
+              Atelier to discuss your ideas, requirements
+              and the direction of your project. We&apos;ll
+              use the consultation to understand what you
+              need and guide you toward the right next
+              step.
             </p>
 
             <div className="mt-8 flex flex-wrap gap-3">
@@ -205,13 +289,19 @@ export default function ConsultationPage() {
 
               <div>
                 <h2 className="text-lg font-semibold">
-                  Consultation request prepared
+                  Consultation request submitted
                 </h2>
 
                 <p className="mt-2 max-w-2xl text-sm leading-6 text-black/65">
-                  Your consultation details have been captured successfully.
-                  The next step is for a KBX Project Manager to review the
-                  request and contact you to confirm the appointment.
+                  Thank you. Your consultation request
+                  has been submitted successfully. A KBX
+                  Project Manager will review your request
+                  and contact you to confirm the appointment.
+                </p>
+
+                <p className="mt-3 max-w-2xl text-sm leading-6 text-black/65">
+                  Your selected date and time are not
+                  confirmed until KBX contacts you.
                 </p>
               </div>
             </div>
@@ -230,7 +320,9 @@ export default function ConsultationPage() {
             <div className="mb-8">
               <p
                 className="text-xs font-semibold uppercase tracking-[0.22em]"
-                style={{ color: RED }}
+                style={{
+                  color: RED,
+                }}
               >
                 01
               </p>
@@ -250,9 +342,13 @@ export default function ConsultationPage() {
                 required
                 value={form.fullName}
                 onChange={(value) =>
-                  updateField("fullName", value)
+                  updateField(
+                    "fullName",
+                    value
+                  )
                 }
                 placeholder="Your full name"
+                disabled={submitting}
               />
 
               <Field
@@ -261,9 +357,13 @@ export default function ConsultationPage() {
                 type="email"
                 value={form.email}
                 onChange={(value) =>
-                  updateField("email", value)
+                  updateField(
+                    "email",
+                    value
+                  )
                 }
                 placeholder="you@example.com"
+                disabled={submitting}
               />
 
               <Field
@@ -272,9 +372,13 @@ export default function ConsultationPage() {
                 type="tel"
                 value={form.phone}
                 onChange={(value) =>
-                  updateField("phone", value)
+                  updateField(
+                    "phone",
+                    value
+                  )
                 }
                 placeholder="+233..."
+                disabled={submitting}
               />
 
               <Field
@@ -282,26 +386,38 @@ export default function ConsultationPage() {
                 required
                 value={form.areaCity}
                 onChange={(value) =>
-                  updateField("areaCity", value)
+                  updateField(
+                    "areaCity",
+                    value
+                  )
                 }
                 placeholder="e.g. Spintex, Accra"
+                disabled={submitting}
               />
 
               <div className="sm:col-span-2">
                 <Field
                   label="Specific Location / Address"
                   required
-                  value={form.specificLocation}
+                  value={
+                    form.specificLocation
+                  }
                   onChange={(value) =>
-                    updateField("specificLocation", value)
+                    updateField(
+                      "specificLocation",
+                      value
+                    )
                   }
                   placeholder="Street, landmark, estate, building or other useful location details"
+                  disabled={submitting}
                 />
 
                 <p className="mt-2 text-xs leading-5 text-black/45">
-                  For remote consultations, a general location is sufficient.
-                  For face-to-face consultations, please provide enough detail
-                  for us to identify the meeting location.
+                  For remote consultations, a general
+                  location is sufficient. For face-to-face
+                  consultations, please provide enough
+                  detail for us to identify the meeting
+                  location.
                 </p>
               </div>
             </div>
@@ -312,7 +428,9 @@ export default function ConsultationPage() {
             <div className="mb-8">
               <p
                 className="text-xs font-semibold uppercase tracking-[0.22em]"
-                style={{ color: RED }}
+                style={{
+                  color: RED,
+                }}
               >
                 02
               </p>
@@ -322,7 +440,8 @@ export default function ConsultationPage() {
               </h2>
 
               <p className="mt-2 text-sm leading-6 text-black/55">
-                Choose how you would like to meet with us.
+                Choose how you would like to meet with
+                us.
               </p>
             </div>
 
@@ -330,13 +449,20 @@ export default function ConsultationPage() {
               {/* WHATSAPP */}
               <button
                 type="button"
+                disabled={submitting}
                 onClick={() =>
-                  handleMethodChange("whatsapp")
+                  handleMethodChange(
+                    "whatsapp"
+                  )
                 }
-                className={`text-left rounded-2xl border p-6 transition ${
+                className={`rounded-2xl border p-6 text-left transition ${
                   method === "whatsapp"
                     ? "border-[#910B0A] bg-[#910B0A]/[0.035] shadow-sm"
                     : "border-black/10 bg-[#fafaf8] hover:border-black/25"
+                } ${
+                  submitting
+                    ? "cursor-not-allowed opacity-60"
+                    : ""
                 }`}
               >
                 <div className="flex items-start justify-between gap-4">
@@ -349,7 +475,8 @@ export default function ConsultationPage() {
                       className="mt-1 text-xs font-medium uppercase tracking-[0.12em]"
                       style={{
                         color:
-                          method === "whatsapp"
+                          method ===
+                          "whatsapp"
                             ? RED
                             : "rgba(0,0,0,0.45)",
                       }}
@@ -359,27 +486,37 @@ export default function ConsultationPage() {
                   </div>
 
                   <SelectionIndicator
-                    selected={method === "whatsapp"}
+                    selected={
+                      method === "whatsapp"
+                    }
                   />
                 </div>
 
                 <p className="mt-5 text-sm leading-6 text-black/60">
-                  A KBX Project Manager will contact you directly via WhatsApp
-                  video call or phone call using the contact details you
-                  provide, based on your selected date and time.
+                  A KBX Project Manager will contact you
+                  directly via WhatsApp video call or phone
+                  call using the contact details you provide,
+                  based on your selected date and time.
                 </p>
               </button>
 
               {/* FACE TO FACE */}
               <button
                 type="button"
+                disabled={submitting}
                 onClick={() =>
-                  handleMethodChange("face-to-face")
+                  handleMethodChange(
+                    "face-to-face"
+                  )
                 }
-                className={`text-left rounded-2xl border p-6 transition ${
+                className={`rounded-2xl border p-6 text-left transition ${
                   method === "face-to-face"
                     ? "border-[#910B0A] bg-[#910B0A]/[0.035] shadow-sm"
                     : "border-black/10 bg-[#fafaf8] hover:border-black/25"
+                } ${
+                  submitting
+                    ? "cursor-not-allowed opacity-60"
+                    : ""
                 }`}
               >
                 <div className="flex items-start justify-between gap-4">
@@ -392,7 +529,8 @@ export default function ConsultationPage() {
                       className="mt-1 text-xs font-medium uppercase tracking-[0.12em]"
                       style={{
                         color:
-                          method === "face-to-face"
+                          method ===
+                          "face-to-face"
                             ? RED
                             : "rgba(0,0,0,0.45)",
                       }}
@@ -402,20 +540,26 @@ export default function ConsultationPage() {
                   </div>
 
                   <SelectionIndicator
-                    selected={method === "face-to-face"}
+                    selected={
+                      method ===
+                      "face-to-face"
+                    }
                   />
                 </div>
 
                 <p className="mt-5 text-sm leading-6 text-black/60">
-                  A KBX Project Manager will meet you at the location provided,
-                  based on your selected date and time. Transportation costs
-                  for the visit are the responsibility of the client and will
-                  be settled after the consultation.
+                  A KBX Project Manager will meet you at the
+                  location provided, based on your selected
+                  date and time. Transportation costs for the
+                  visit are the responsibility of the client
+                  and will be settled after the
+                  consultation.
                 </p>
 
                 <p className="mt-4 text-sm leading-6 text-black/60">
-                  KBX will contact you before the scheduled appointment to
-                  confirm the meeting, location and arrangements.
+                  KBX will contact you before the scheduled
+                  appointment to confirm the meeting,
+                  location and arrangements.
                 </p>
               </button>
             </div>
@@ -426,20 +570,26 @@ export default function ConsultationPage() {
                 <label className="flex cursor-pointer items-start gap-3">
                   <input
                     type="checkbox"
-                    checked={faceToFaceAccepted}
+                    checked={
+                      faceToFaceAccepted
+                    }
+                    disabled={submitting}
                     onChange={(event) =>
                       setFaceToFaceAccepted(
-                        event.target.checked
+                        event.target
+                          .checked
                       )
                     }
                     className="mt-1 h-4 w-4 shrink-0 accent-[#910B0A]"
                   />
 
                   <span className="text-sm leading-6 text-black/70">
-                    I have read and understood the Face-to-Face Consultation
-                    terms, including that transportation costs for the visit
-                    are the responsibility of the client and will be settled
-                    after the consultation.
+                    I have read and understood the
+                    Face-to-Face Consultation terms,
+                    including that transportation costs for
+                    the visit are the responsibility of the
+                    client and will be settled after the
+                    consultation.
                   </span>
                 </label>
               </div>
@@ -451,7 +601,9 @@ export default function ConsultationPage() {
             <div className="mb-8">
               <p
                 className="text-xs font-semibold uppercase tracking-[0.22em]"
-                style={{ color: RED }}
+                style={{
+                  color: RED,
+                }}
               >
                 03
               </p>
@@ -461,8 +613,9 @@ export default function ConsultationPage() {
               </h2>
 
               <p className="mt-2 text-sm leading-6 text-black/55">
-                Select your preferred date and time. We&apos;ll contact you to
-                confirm the appointment.
+                Select your preferred date and time.
+                We&apos;ll contact you to confirm the
+                appointment.
               </p>
             </div>
 
@@ -471,40 +624,64 @@ export default function ConsultationPage() {
                 label="Preferred Consultation Date"
                 required
                 type="date"
-                value={form.preferredDate}
-                onChange={(value) =>
-                  updateField("preferredDate", value)
+                value={
+                  form.preferredDate
                 }
+                onChange={(value) =>
+                  updateField(
+                    "preferredDate",
+                    value
+                  )
+                }
+                disabled={submitting}
               />
 
               <SelectField
                 label="Preferred Consultation Time"
                 required
-                value={form.preferredTime}
+                value={
+                  form.preferredTime
+                }
                 onChange={(value) =>
-                  updateField("preferredTime", value)
+                  updateField(
+                    "preferredTime",
+                    value
+                  )
                 }
                 options={TIME_SLOTS}
                 placeholder="Select a time"
+                disabled={submitting}
               />
 
               <Field
                 label="Alternative Date"
                 type="date"
-                value={form.alternativeDate}
-                onChange={(value) =>
-                  updateField("alternativeDate", value)
+                value={
+                  form.alternativeDate
                 }
+                onChange={(value) =>
+                  updateField(
+                    "alternativeDate",
+                    value
+                  )
+                }
+                disabled={submitting}
               />
 
               <SelectField
                 label="Alternative Time"
-                value={form.alternativeTime}
+                value={
+                  form.alternativeTime
+                }
                 onChange={(value) =>
-                  updateField("alternativeTime", value)
+                  updateField(
+                    "alternativeTime",
+                    value
+                  )
                 }
                 options={TIME_SLOTS}
                 placeholder="Select an alternative time"
+                disabled={submitting}
               />
             </div>
 
@@ -512,14 +689,17 @@ export default function ConsultationPage() {
               <div className="flex gap-3">
                 <div
                   className="mt-0.5 flex h-7 w-7 shrink-0 items-center justify-center rounded-full text-xs font-bold text-white"
-                  style={{ backgroundColor: RED }}
+                  style={{
+                    backgroundColor: RED,
+                  }}
                 >
                   i
                 </div>
 
                 <p className="text-sm leading-6 text-black/60">
-                  Your selected date and time are a consultation request and
-                  are not confirmed until a KBX Project Manager contacts you.
+                  Your selected date and time are a
+                  consultation request and are not confirmed
+                  until a KBX Project Manager contacts you.
                 </p>
               </div>
             </div>
@@ -530,7 +710,9 @@ export default function ConsultationPage() {
             <div className="mb-8">
               <p
                 className="text-xs font-semibold uppercase tracking-[0.22em]"
-                style={{ color: RED }}
+                style={{
+                  color: RED,
+                }}
               >
                 04
               </p>
@@ -540,8 +722,8 @@ export default function ConsultationPage() {
               </h2>
 
               <p className="mt-2 text-sm leading-6 text-black/55">
-                This is optional. You do not need to provide a detailed
-                project brief at this stage.
+                This is optional. You do not need to provide
+                a detailed project brief at this stage.
               </p>
             </div>
 
@@ -559,12 +741,16 @@ export default function ConsultationPage() {
               <textarea
                 id="message"
                 value={form.message}
+                disabled={submitting}
                 onChange={(event) =>
-                  updateField("message", event.target.value)
+                  updateField(
+                    "message",
+                    event.target.value
+                  )
                 }
                 rows={6}
                 placeholder="I would like to discuss furnishing my new apartment."
-                className="w-full resize-none rounded-2xl border border-black/10 bg-[#fafaf8] px-4 py-4 text-sm outline-none transition placeholder:text-black/30 focus:border-[#910B0A] focus:bg-white"
+                className="w-full resize-none rounded-2xl border border-black/10 bg-[#fafaf8] px-4 py-4 text-sm outline-none transition placeholder:text-black/30 focus:border-[#910B0A] focus:bg-white disabled:cursor-not-allowed disabled:opacity-60"
               />
             </div>
           </section>
@@ -574,7 +760,9 @@ export default function ConsultationPage() {
             <div className="mb-8">
               <p
                 className="text-xs font-semibold uppercase tracking-[0.22em]"
-                style={{ color: RED }}
+                style={{
+                  color: RED,
+                }}
               >
                 05
               </p>
@@ -584,23 +772,33 @@ export default function ConsultationPage() {
               </h2>
 
               <p className="mt-2 text-sm leading-6 text-black/55">
-                Please review your information before requesting your
-                consultation.
+                Please review your information before
+                requesting your consultation.
               </p>
             </div>
 
-            <label className="flex cursor-pointer items-start gap-3 rounded-2xl border border-black/10 bg-[#fafaf8] p-5">
+            <label
+              className={`flex items-start gap-3 rounded-2xl border border-black/10 bg-[#fafaf8] p-5 ${
+                submitting
+                  ? "cursor-not-allowed opacity-60"
+                  : "cursor-pointer"
+              }`}
+            >
               <input
                 type="checkbox"
                 checked={confirmed}
+                disabled={submitting}
                 onChange={(event) =>
-                  setConfirmed(event.target.checked)
+                  setConfirmed(
+                    event.target.checked
+                  )
                 }
                 className="mt-1 h-4 w-4 shrink-0 accent-[#910B0A]"
               />
 
               <span className="text-sm leading-6 text-black/70">
-                I confirm that the information provided is accurate.
+                I confirm that the information provided is
+                accurate.
               </span>
             </label>
 
@@ -614,17 +812,27 @@ export default function ConsultationPage() {
 
             <div className="mt-8 flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
               <p className="max-w-md text-xs leading-5 text-black/45">
-                By submitting this form, you are requesting a consultation.
-                The appointment becomes confirmed only after contact from a
-                KBX Project Manager.
+                By submitting this form, you are requesting
+                a consultation. The appointment becomes
+                confirmed only after contact from a KBX
+                Project Manager.
               </p>
 
               <button
                 type="submit"
-                className="rounded-full px-7 py-4 text-sm font-semibold text-white transition hover:opacity-90"
-                style={{ backgroundColor: RED }}
+                disabled={submitting}
+                className={`rounded-full px-7 py-4 text-sm font-semibold text-white transition ${
+                  submitting
+                    ? "cursor-not-allowed opacity-60"
+                    : "hover:opacity-90"
+                }`}
+                style={{
+                  backgroundColor: RED,
+                }}
               >
-                REQUEST FREE CONSULTATION
+                {submitting
+                  ? "SENDING REQUEST..."
+                  : "REQUEST FREE CONSULTATION"}
               </button>
             </div>
           </section>
@@ -660,8 +868,9 @@ export default function ConsultationPage() {
               </Link>
 
               <p className="mt-4 max-w-md text-sm leading-6 text-black/50">
-                Interior design, architecture, spatial planning, bespoke
-                joinery and 3D visualization.
+                Interior design, architecture, spatial
+                planning, bespoke joinery and 3D
+                visualization.
               </p>
             </div>
 
@@ -687,8 +896,8 @@ export default function ConsultationPage() {
           </div>
 
           <div className="mt-10 border-t border-black/10 pt-6 text-xs text-black/40">
-            © {new Date().getFullYear()} KBX Spatial Atelier. All rights
-            reserved.
+            © {new Date().getFullYear()} KBX Spatial Atelier.
+            All rights reserved.
           </div>
         </div>
       </footer>
@@ -707,6 +916,7 @@ function Field({
   value,
   onChange,
   placeholder,
+  disabled = false,
 }: {
   label: string;
   required?: boolean;
@@ -714,15 +924,19 @@ function Field({
   value: string;
   onChange: (value: string) => void;
   placeholder?: string;
+  disabled?: boolean;
 }) {
   return (
     <div>
       <label className="mb-2 block text-sm font-semibold">
         {label}
+
         {required && (
           <span
             className="ml-1"
-            style={{ color: RED }}
+            style={{
+              color: RED,
+            }}
           >
             *
           </span>
@@ -732,12 +946,13 @@ function Field({
       <input
         type={type}
         required={required}
+        disabled={disabled}
         value={value}
         onChange={(event) =>
           onChange(event.target.value)
         }
         placeholder={placeholder}
-        className="w-full rounded-2xl border border-black/10 bg-[#fafaf8] px-4 py-3.5 text-sm outline-none transition placeholder:text-black/30 focus:border-[#910B0A] focus:bg-white"
+        className="w-full rounded-2xl border border-black/10 bg-[#fafaf8] px-4 py-3.5 text-sm outline-none transition placeholder:text-black/30 focus:border-[#910B0A] focus:bg-white disabled:cursor-not-allowed disabled:opacity-60"
       />
     </div>
   );
@@ -754,6 +969,7 @@ function SelectField({
   onChange,
   options,
   placeholder,
+  disabled = false,
 }: {
   label: string;
   required?: boolean;
@@ -761,15 +977,19 @@ function SelectField({
   onChange: (value: string) => void;
   options: string[];
   placeholder: string;
+  disabled?: boolean;
 }) {
   return (
     <div>
       <label className="mb-2 block text-sm font-semibold">
         {label}
+
         {required && (
           <span
             className="ml-1"
-            style={{ color: RED }}
+            style={{
+              color: RED,
+            }}
           >
             *
           </span>
@@ -778,11 +998,12 @@ function SelectField({
 
       <select
         required={required}
+        disabled={disabled}
         value={value}
         onChange={(event) =>
           onChange(event.target.value)
         }
-        className={`w-full appearance-none rounded-2xl border border-black/10 bg-[#fafaf8] px-4 py-3.5 text-sm outline-none transition focus:border-[#910B0A] focus:bg-white ${
+        className={`w-full appearance-none rounded-2xl border border-black/10 bg-[#fafaf8] px-4 py-3.5 text-sm outline-none transition focus:border-[#910B0A] focus:bg-white disabled:cursor-not-allowed disabled:opacity-60 ${
           value
             ? "text-black"
             : "text-black/35"
