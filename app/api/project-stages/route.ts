@@ -122,6 +122,30 @@ type ClientProfileRow = {
 
 /*
  * ============================================================
+ * UUID VALIDATION
+ * ============================================================
+ *
+ * Current client accounts can use IDs such as:
+ *
+ * client-1789130467538-csmiwn
+ *
+ * These are TEXT identifiers.
+ *
+ * client_profiles.auth_user_id is a UUID column.
+ *
+ * Never send a temporary/local client ID to that UUID column.
+ */
+
+function isValidUuid(
+  value: string
+) {
+  return /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(
+    value
+  );
+}
+
+/*
+ * ============================================================
  * SUPABASE ADMIN CLIENT
  * ============================================================
  */
@@ -152,6 +176,12 @@ function getSupabaseAdmin() {
  * ============================================================
  * LOAD CLIENT PROFILE
  * ============================================================
+ *
+ * client_profiles.auth_user_id is a UUID.
+ *
+ * If the current client ID is a temporary/local text ID,
+ * we skip this lookup instead of sending the text ID to
+ * the UUID column.
  */
 
 async function getClientProfile(
@@ -160,6 +190,15 @@ async function getClientProfile(
   >,
   clientId: string
 ) {
+  if (!isValidUuid(clientId)) {
+    console.log(
+      "[project-stages] Skipping client_profiles lookup because clientId is not a UUID:",
+      clientId
+    );
+
+    return null;
+  }
+
   const {
     data,
     error,
@@ -191,13 +230,12 @@ async function getClientProfile(
  * ============================================================
  *
  * First:
- *   Search by current Supabase Auth UUID.
+ *   Search by the current client ID.
  *
  * Fallback:
- *   Search by the client's email.
- *
- * This allows older documents created before the Auth migration
- * to still be recognized.
+ *   If the client ID is a real Supabase Auth UUID,
+ *   search client_profiles and then search documents
+ *   using the client's email.
  */
 
 async function getClientBriefDocument(
@@ -210,6 +248,12 @@ async function getClientBriefDocument(
    * ==========================================================
    * ATTEMPT 1 — CLIENT ID
    * ==========================================================
+   *
+   * client_documents.client_id is TEXT.
+   *
+   * Therefore this is safe for:
+   *
+   * client-1789130467538-csmiwn
    */
 
   const {
@@ -267,6 +311,9 @@ async function getClientBriefDocument(
    * ==========================================================
    * ATTEMPT 2 — CLIENT EMAIL
    * ==========================================================
+   *
+   * This fallback only runs when clientId is a valid
+   * Supabase Auth UUID.
    */
 
   const clientProfile =
@@ -279,7 +326,7 @@ async function getClientBriefDocument(
     !clientProfile?.email
   ) {
     console.log(
-      "[project-stages] No client profile found for client:",
+      "[project-stages] No client profile/email fallback available:",
       clientId
     );
 
@@ -1018,11 +1065,6 @@ export async function GET(
      * ========================================================
      * DIAGNOSTICS
      * ========================================================
-     *
-     * Temporary diagnostic information.
-     *
-     * This allows us to see whether the API believes
-     * the Client Brief has been completed.
      */
 
     const stage2 =
