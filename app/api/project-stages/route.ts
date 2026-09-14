@@ -19,12 +19,6 @@ const SUPABASE_SERVICE_ROLE_KEY =
  * ============================================================
  * PROJECT STAGES
  * ============================================================
- *
- * These must match the stages used by:
- *
- * /api/upload-documents
- *
- * and the client portal.
  */
 
 const PROJECT_STAGES = [
@@ -77,6 +71,20 @@ const PROJECT_STAGES = [
 
 /*
  * ============================================================
+ * BRIEF DOCUMENT TYPES
+ * ============================================================
+ */
+
+const CLIENT_BRIEF_DOCUMENT_TYPES = [
+  "kitchen_brief",
+  "wardrobe_brief",
+  "tv_unit_brief",
+  "full_interior_brief",
+  "client_brief",
+];
+
+/*
+ * ============================================================
  * TYPES
  * ============================================================
  */
@@ -97,14 +105,16 @@ type ProjectStageRow = {
   updated_at: string;
 };
 
+type ClientDocumentRow = {
+  id: string;
+  document_type: string | null;
+  created_at: string;
+};
+
 /*
  * ============================================================
  * SUPABASE ADMIN CLIENT
  * ============================================================
- *
- * This route runs on the server.
- *
- * The service-role key is NEVER exposed to the browser.
  */
 
 function getSupabaseAdmin() {
@@ -131,73 +141,29 @@ function getSupabaseAdmin() {
 
 /*
  * ============================================================
- * INITIALIZE PROJECT STAGES
+ * LOAD CLIENT BRIEF
  * ============================================================
  *
- * If a client does not have project_stages rows yet,
- * create the complete nine-stage journey.
+ * The Client Brief is completed by the client.
  *
- * Default state:
+ * Once a valid brief document exists:
  *
- * 01 Consultation     = completed
- * 02 Client Brief     = current
- * 03–09               = upcoming
+ * Consultation = completed
+ * Client Brief = completed
+ * Site Survey = current
  *
- * IMPORTANT:
- * This function first checks existing client documents so
- * that an already-submitted Client Brief is not accidentally
- * reset to "current".
+ * The admin does NOT complete the Client Brief.
  */
 
-async function initializeProjectStages(
+async function getClientBriefDocument(
   supabase: ReturnType<
     typeof getSupabaseAdmin
   >,
   clientId: string
 ) {
-  /*
-   * Check whether stages already exist.
-   */
-
   const {
-    data: existingStages,
-    error: existingStagesError,
-  } = await supabase
-    .from("project_stages")
-    .select("*")
-    .eq("client_id", clientId)
-    .order("stage_number", {
-      ascending: true,
-    });
-
-  if (existingStagesError) {
-    throw new Error(
-      existingStagesError.message
-    );
-  }
-
-  if (
-    existingStages &&
-    existingStages.length > 0
-  ) {
-    return existingStages as ProjectStageRow[];
-  }
-
-  /*
-   * ==========================================================
-   * CHECK EXISTING CLIENT BRIEF
-   * ==========================================================
-   *
-   * This protects existing clients whose brief was already
-   * submitted before project_stages was introduced.
-   */
-
-  let clientBriefCompleted =
-    false;
-
-  const {
-    data: submittedDocuments,
-    error: documentsError,
+    data,
+    error,
   } = await supabase
     .from("client_documents")
     .select(
@@ -208,62 +174,102 @@ async function initializeProjectStages(
       ascending: false,
     });
 
-  if (documentsError) {
+  if (error) {
     throw new Error(
-      documentsError.message
+      error.message
     );
   }
 
-  if (
-    Array.isArray(
-      submittedDocuments
-    )
-  ) {
-    clientBriefCompleted =
-      submittedDocuments.some(
-        (document) =>
-          [
-            "kitchen_brief",
-            "wardrobe_brief",
-            "tv_unit_brief",
-            "full_interior_brief",
-            "client_brief",
-          ].includes(
-            document.document_type
-          )
-      );
+  const documents =
+    (data ||
+      []) as ClientDocumentRow[];
+
+  const briefDocument =
+    documents.find(
+      (document) =>
+        CLIENT_BRIEF_DOCUMENT_TYPES.includes(
+          document.document_type || ""
+        )
+    ) || null;
+
+  return briefDocument;
+}
+
+/*
+ * ============================================================
+ * INITIALIZE PROJECT STAGES
+ * ============================================================
+ *
+ * Creates the nine stages for a client who does not yet have
+ * project_stages records.
+ *
+ * If the client has already completed a brief:
+ *
+ * 01 Consultation = completed
+ * 02 Client Brief = completed
+ * 03 Site Survey = current
+ *
+ * Otherwise:
+ *
+ * 01 Consultation = completed
+ * 02 Client Brief = current
+ * 03–09 = upcoming
+ */
+
+async function initializeProjectStages(
+  supabase: ReturnType<
+    typeof getSupabaseAdmin
+  >,
+  clientId: string
+) {
+  const {
+    data: existingStages,
+    error: existingStagesError,
+  } =
+    await supabase
+      .from("project_stages")
+      .select("*")
+      .eq("client_id", clientId)
+      .order("stage_number", {
+        ascending: true,
+      });
+
+  if (existingStagesError) {
+    throw new Error(
+      existingStagesError.message
+    );
   }
 
   /*
-   * Find the document that proves the Client Brief
-   * was completed.
+   * If stages already exist, return them.
+   *
+   * Existing stages are synchronized separately
+   * by synchronizeProjectStages().
+   */
+
+  if (
+    existingStages &&
+    existingStages.length > 0
+  ) {
+    return existingStages as ProjectStageRow[];
+  }
+
+  /*
+   * Check whether the client has completed
+   * a Client Brief.
    */
 
   const briefDocument =
-    submittedDocuments?.find(
-      (document) =>
-        [
-          "kitchen_brief",
-          "wardrobe_brief",
-          "tv_unit_brief",
-          "full_interior_brief",
-          "client_brief",
-        ].includes(
-          document.document_type
-        )
+    await getClientBriefDocument(
+      supabase,
+      clientId
     );
 
+  const clientBriefCompleted =
+    Boolean(briefDocument);
+
   /*
-   * Determine the initial current stage.
-   *
-   * If the brief already exists:
-   * Consultation = completed
-   * Client Brief = completed
-   * Site Survey = current
-   *
-   * Otherwise:
-   * Consultation = completed
-   * Client Brief = current
+   * Create all nine stages.
    */
 
   const rows =
@@ -282,34 +288,69 @@ async function initializeProjectStages(
           | string
           | null = null;
 
+        /*
+         * Consultation is automatically
+         * completed once the client has entered
+         * the project system.
+         */
+
         if (
           stage.number === 1
         ) {
           status = "completed";
+
           completedAt =
             new Date().toISOString();
-        } else if (
+        }
+
+        /*
+         * Client Brief is completed by the
+         * client's submitted brief.
+         */
+
+        else if (
           stage.number === 2 &&
           clientBriefCompleted
         ) {
           status = "completed";
+
           documentId =
             briefDocument?.id ||
             null;
+
           completedAt =
             briefDocument?.created_at ||
             new Date().toISOString();
-        } else if (
-          stage.number === 2 &&
-          !clientBriefCompleted
-        ) {
-          status = "current";
-        } else if (
+        }
+
+        /*
+         * If the client has completed the brief,
+         * Site Survey becomes the first admin stage.
+         */
+
+        else if (
           stage.number === 3 &&
           clientBriefCompleted
         ) {
           status = "current";
-        } else {
+        }
+
+        /*
+         * If the client has not completed the
+         * brief, Client Brief remains current.
+         */
+
+        else if (
+          stage.number === 2
+        ) {
+          status = "current";
+        }
+
+        /*
+         * Everything else is upcoming.
+         */
+
+        else {
           status = "upcoming";
         }
 
@@ -330,20 +371,17 @@ async function initializeProjectStages(
       }
     );
 
-  /*
-   * Insert all nine stages.
-   */
-
   const {
     data: insertedStages,
     error: insertError,
-  } = await supabase
-    .from("project_stages")
-    .insert(rows)
-    .select("*")
-    .order("stage_number", {
-      ascending: true,
-    });
+  } =
+    await supabase
+      .from("project_stages")
+      .insert(rows)
+      .select("*")
+      .order("stage_number", {
+        ascending: true,
+      });
 
   if (insertError) {
     throw new Error(
@@ -358,6 +396,292 @@ async function initializeProjectStages(
 
 /*
  * ============================================================
+ * SYNCHRONIZE PROJECT STAGES
+ * ============================================================
+ *
+ * This is important for clients whose project_stages rows
+ * already existed before the Client Brief was completed.
+ *
+ * It makes the database reflect the actual project state.
+ *
+ * Client-managed stages:
+ *
+ * 01 Consultation
+ * 02 Client Brief
+ *
+ * Admin-managed stages:
+ *
+ * 03 Site Survey
+ * 04 Concept
+ * 05 Spatial Planning
+ * 06 3D Development
+ * 07 Technical Documentation
+ * 08 Fabrication
+ * 09 Installation
+ */
+
+async function synchronizeProjectStages(
+  supabase: ReturnType<
+    typeof getSupabaseAdmin
+  >,
+  clientId: string,
+  stages: ProjectStageRow[]
+) {
+  /*
+   * Find the client's completed brief.
+   */
+
+  const briefDocument =
+    await getClientBriefDocument(
+      supabase,
+      clientId
+    );
+
+  const clientBriefCompleted =
+    Boolean(briefDocument);
+
+  /*
+   * ==========================================================
+   * CONSULTATION
+   * ==========================================================
+   *
+   * Consultation is automatically completed.
+   */
+
+  const consultation =
+    stages.find(
+      (stage) =>
+        stage.stage_number === 1
+    );
+
+  if (
+    consultation &&
+    consultation.status !==
+      "completed"
+  ) {
+    const { error } =
+      await supabase
+        .from("project_stages")
+        .update({
+          status: "completed",
+          completed_at:
+            consultation.completed_at ||
+            new Date().toISOString(),
+        })
+        .eq(
+          "id",
+          consultation.id
+        );
+
+    if (error) {
+      throw new Error(
+        error.message
+      );
+    }
+  }
+
+  /*
+   * ==========================================================
+   * CLIENT BRIEF
+   * ==========================================================
+   *
+   * If the client has submitted a brief,
+   * Client Brief must be completed.
+   */
+
+  const clientBrief =
+    stages.find(
+      (stage) =>
+        stage.stage_number === 2
+    );
+
+  if (
+    clientBrief &&
+    clientBriefCompleted
+  ) {
+    const needsUpdate =
+      clientBrief.status !==
+        "completed" ||
+      clientBrief.document_id !==
+        briefDocument?.id;
+
+    if (needsUpdate) {
+      const { error } =
+        await supabase
+          .from("project_stages")
+          .update({
+            status: "completed",
+            document_id:
+              briefDocument?.id ||
+              null,
+            completed_at:
+              briefDocument?.created_at ||
+              new Date().toISOString(),
+          })
+          .eq(
+            "id",
+            clientBrief.id
+          );
+
+      if (error) {
+        throw new Error(
+          error.message
+        );
+      }
+    }
+  }
+
+  /*
+   * ==========================================================
+   * DETERMINE ADMIN CURRENT STAGE
+   * ==========================================================
+   *
+   * Look at stages 3–9.
+   *
+   * The first stage that has not been completed
+   * becomes current.
+   *
+   * This means existing projects continue correctly.
+   */
+
+  const refreshedStagesResult =
+    await supabase
+      .from("project_stages")
+      .select("*")
+      .eq("client_id", clientId)
+      .order("stage_number", {
+        ascending: true,
+      });
+
+  if (
+    refreshedStagesResult.error
+  ) {
+    throw new Error(
+      refreshedStagesResult.error.message
+    );
+  }
+
+  const refreshedStages =
+    (refreshedStagesResult.data ||
+      []) as ProjectStageRow[];
+
+  /*
+   * If the client has NOT completed the brief,
+   * Client Brief remains the current stage.
+   *
+   * This is the only situation where stage 2
+   * should remain current.
+   */
+
+  if (!clientBriefCompleted) {
+    const stageTwo =
+      refreshedStages.find(
+        (stage) =>
+          stage.stage_number === 2
+      );
+
+    if (
+      stageTwo &&
+      stageTwo.status !==
+        "current"
+    ) {
+      const { error } =
+        await supabase
+          .from("project_stages")
+          .update({
+            status: "current",
+          })
+          .eq(
+            "id",
+            stageTwo.id
+          );
+
+      if (error) {
+        throw new Error(
+          error.message
+        );
+      }
+    }
+
+    return;
+  }
+
+  /*
+   * The Client Brief is completed.
+   *
+   * Now find the first incomplete admin stage.
+   */
+
+  const firstIncompleteAdminStage =
+    refreshedStages.find(
+      (stage) =>
+        stage.stage_number >= 3 &&
+        stage.status !==
+          "completed"
+    );
+
+  /*
+   * If all admin stages are completed,
+   * there is no current stage.
+   */
+
+  if (
+    !firstIncompleteAdminStage
+  ) {
+    return;
+  }
+
+  /*
+   * Make the first incomplete admin stage
+   * current and make sure other incomplete
+   * admin stages are upcoming.
+   */
+
+  for (
+    const stage of refreshedStages
+  ) {
+    if (
+      stage.stage_number < 3
+    ) {
+      continue;
+    }
+
+    const desiredStatus =
+      stage.id ===
+      firstIncompleteAdminStage.id
+        ? "current"
+        : stage.status ===
+            "completed"
+          ? "completed"
+          : "upcoming";
+
+    if (
+      stage.status !==
+      desiredStatus
+    ) {
+      const { error } =
+        await supabase
+          .from("project_stages")
+          .update({
+            status:
+              desiredStatus,
+          })
+          .eq(
+            "id",
+            stage.id
+          );
+
+      if (error) {
+        throw new Error(
+          error.message
+        );
+      }
+    }
+  }
+}
+
+/*
+ * ============================================================
  * GET
  * ============================================================
  *
@@ -367,8 +691,6 @@ async function initializeProjectStages(
  *
  * - /admin/project
  * - /client-portal
- *
- * Returns all nine project stages.
  */
 
 export async function GET(
@@ -379,10 +701,6 @@ export async function GET(
       request.nextUrl.searchParams.get(
         "clientId"
       );
-
-    /*
-     * Client ID is required.
-     */
 
     if (!clientId) {
       return NextResponse.json(
@@ -401,14 +719,70 @@ export async function GET(
       getSupabaseAdmin();
 
     /*
-     * Get existing stages or initialize them.
+     * Initialize the project if this client
+     * has never had stages before.
      */
 
-    const stages =
-      await initializeProjectStages(
-        supabase,
-        clientId
+    await initializeProjectStages(
+      supabase,
+      clientId
+    );
+
+    /*
+     * Synchronize the stages with the actual
+     * client brief and existing project progress.
+     */
+
+    const {
+      data: stagesBeforeSync,
+      error: stagesBeforeSyncError,
+    } =
+      await supabase
+        .from("project_stages")
+        .select("*")
+        .eq("client_id", clientId)
+        .order("stage_number", {
+          ascending: true,
+        });
+
+    if (stagesBeforeSyncError) {
+      throw new Error(
+        stagesBeforeSyncError.message
       );
+    }
+
+    await synchronizeProjectStages(
+      supabase,
+      clientId,
+      (stagesBeforeSync ||
+        []) as ProjectStageRow[]
+    );
+
+    /*
+     * Fetch the final synchronized state.
+     */
+
+    const {
+      data: finalStages,
+      error: finalStagesError,
+    } =
+      await supabase
+        .from("project_stages")
+        .select("*")
+        .eq("client_id", clientId)
+        .order("stage_number", {
+          ascending: true,
+        });
+
+    if (finalStagesError) {
+      throw new Error(
+        finalStagesError.message
+      );
+    }
+
+    const stages =
+      (finalStages ||
+        []) as ProjectStageRow[];
 
     /*
      * Determine current stage.
@@ -433,7 +807,7 @@ export async function GET(
       ).length;
 
     /*
-     * Calculate progress percentage.
+     * Calculate progress.
      */
 
     const progressPercentage =
