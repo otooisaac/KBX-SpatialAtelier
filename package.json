@@ -30,6 +30,7 @@
     "typescript": "5.2.2"
   },
   "devDependencies": {
+    "@types/pdfkit": "^0.17.6",
     "@types/sharp": "^0.31.1"
   }
 }
