@@ -22,7 +22,9 @@ const CLIENT_BRIEF_DOCUMENT_TYPES = [
 ];
 
 function cleanText(value: unknown): string {
-  if (value === null || value === undefined) return "";
+  if (value === null || value === undefined) {
+    return "";
+  }
 
   return String(value).trim();
 }
@@ -121,17 +123,23 @@ function getClientName(briefData: AnyObject): string {
     cleanText(client.fullName) ||
     cleanText(client.full_name);
 
-  if (directName) return directName;
+  if (directName) {
+    return directName;
+  }
 
   const firstName =
-    cleanText(client.firstName) || cleanText(client.first_name);
+    cleanText(client.firstName) ||
+    cleanText(client.first_name);
 
   const lastName =
-    cleanText(client.lastName) || cleanText(client.last_name);
+    cleanText(client.lastName) ||
+    cleanText(client.last_name);
 
   const combined = `${firstName} ${lastName}`.trim();
 
-  if (combined) return combined;
+  if (combined) {
+    return combined;
+  }
 
   return (
     cleanText(briefData.clientName) ||
@@ -179,7 +187,9 @@ function getProjectLocation(briefData: AnyObject): string {
 }
 
 function formatValue(value: unknown): string {
-  if (value === null || value === undefined) return "";
+  if (value === null || value === undefined) {
+    return "";
+  }
 
   if (Array.isArray(value)) {
     return value
@@ -392,17 +402,9 @@ async function savePdfToSupabase(
 
   const clientId = getClientId(briefData);
 
-  /*
-   * IMPORTANT:
-   * A brief must always have a client ID.
-   *
-   * Previously the route allowed client_id to become null.
-   * That meant the brief could be successfully submitted but
-   * project-stages could not associate it with the client.
-   */
   if (!clientId) {
     throw new Error(
-      "Client ID is missing from the submitted brief. Please reopen the client portal and submit the brief again."
+      "Client ID is missing from the submitted brief."
     );
   }
 
@@ -438,35 +440,33 @@ async function savePdfToSupabase(
   const documentUrl = publicUrlData?.publicUrl || null;
 
   const documentName =
-    projectName && projectName !== "Interior Design Project"
+    projectName &&
+    projectName !== "Interior Design Project"
       ? `${projectName} - ${documentType.replace(/_/g, " ")}`
       : `${clientName} - ${documentType.replace(/_/g, " ")}`;
 
-  const { data: insertedDocument, error: insertError } = await supabase
-    .from("client_documents")
-    .insert({
-      client_id: clientId,
-      document_type: documentType,
-      document_name: documentName,
-      file_url: documentUrl,
-      storage_path: storagePath,
-      mime_type: "application/pdf",
-      file_size: pdfBuffer.length,
-      metadata: {
-        client_name: clientName,
-        client_email: clientEmail,
-        project_name: projectName,
-        source: "client_brief_submission",
-      },
-    })
-    .select()
-    .single();
+  const { data: insertedDocument, error: insertError } =
+    await supabase
+      .from("client_documents")
+      .insert({
+        client_id: clientId,
+        document_type: documentType,
+        document_name: documentName,
+        file_url: documentUrl,
+        storage_path: storagePath,
+        mime_type: "application/pdf",
+        file_size: pdfBuffer.length,
+        metadata: {
+          client_name: clientName,
+          client_email: clientEmail,
+          project_name: projectName,
+          source: "client_brief_submission",
+        },
+      })
+      .select()
+      .single();
 
   if (insertError) {
-    /*
-     * If the database insert fails after storage succeeds,
-     * remove the uploaded file so we do not leave orphan files.
-     */
     try {
       await supabase.storage
         .from("client-documents")
@@ -498,6 +498,7 @@ async function sendEmail(
   const smtpPort = process.env.SMTP_PORT;
   const smtpUser = process.env.SMTP_USER;
   const smtpPassword = process.env.SMTP_PASSWORD;
+
   const emailFrom =
     process.env.EMAIL_FROM ||
     process.env.SMTP_FROM ||
@@ -545,10 +546,6 @@ async function sendEmail(
   }
 
   if (recipients.size === 0) {
-    console.warn(
-      "No email recipients were configured. Skipping email notification."
-    );
-
     return {
       sent: false,
       skipped: true,
@@ -587,9 +584,52 @@ The submitted brief PDF is attached.`,
 
 export async function POST(request: NextRequest) {
   try {
-    const briefData = await request.json();
+    /*
+     * Read the request body safely.
+     *
+     * This prevents the route from crashing with an obscure
+     * JSON parser error if the browser sends an empty or malformed
+     * request.
+     */
+    const rawBody = await request.text();
 
-    if (!briefData || typeof briefData !== "object") {
+    if (!rawBody || !rawBody.trim()) {
+      return NextResponse.json(
+        {
+          success: false,
+          error: "The submitted brief is empty.",
+        },
+        { status: 400 }
+      );
+    }
+
+    let briefData: AnyObject;
+
+    try {
+      briefData = JSON.parse(rawBody);
+    } catch (jsonError) {
+      console.error(
+        "INVALID BRIEF JSON:",
+        jsonError,
+        "RAW BODY:",
+        rawBody.substring(0, 500)
+      );
+
+      return NextResponse.json(
+        {
+          success: false,
+          error:
+            "The submitted brief contains invalid JSON. Please refresh the client portal and try again.",
+        },
+        { status: 400 }
+      );
+    }
+
+    if (
+      !briefData ||
+      typeof briefData !== "object" ||
+      Array.isArray(briefData)
+    ) {
       return NextResponse.json(
         {
           success: false,
@@ -605,6 +645,14 @@ export async function POST(request: NextRequest) {
     const clientEmail = getClientEmail(briefData);
     const projectName = getProjectName(briefData);
 
+    console.log("========== KBX BRIEF SUBMISSION ==========");
+    console.log("Document type:", documentType);
+    console.log("Client ID:", clientId);
+    console.log("Client name:", clientName);
+    console.log("Client email:", clientEmail);
+    console.log("Project:", projectName);
+    console.log("==========================================");
+
     if (!CLIENT_BRIEF_DOCUMENT_TYPES.includes(documentType)) {
       return NextResponse.json(
         {
@@ -615,37 +663,16 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    /*
-     * IMPORTANT FIX:
-     *
-     * Do not silently accept a brief without a client ID.
-     * Without this ID, the brief is stored but cannot be
-     * connected to the client's project stages.
-     */
     if (!clientId) {
       return NextResponse.json(
         {
           success: false,
           error:
-            "The client ID is missing from the submitted brief. Please reopen the client portal and submit the brief again.",
+            "Client ID is missing from the submitted brief.",
         },
         { status: 400 }
       );
     }
-
-    if (!clientEmail) {
-      console.warn(
-        "Brief submitted without a client email. Continuing because email is not required for database association."
-      );
-    }
-
-    console.log("Submitting client brief:", {
-      clientId,
-      clientName,
-      clientEmail,
-      projectName,
-      documentType,
-    });
 
     const pdfBuffer = await generatePdf(
       briefData,
@@ -675,10 +702,6 @@ export async function POST(request: NextRequest) {
         documentName
       );
     } catch (emailError) {
-      /*
-       * Email failure should not make the database submission
-       * look unsuccessful. The document has already been saved.
-       */
       console.error(
         "Email notification failed:",
         emailError
