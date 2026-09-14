@@ -1,884 +1,136 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
-import nodemailer from "nodemailer";
-import PDFDocument from "pdfkit";
 
-type AnyObject = Record<string, any>;
+export const runtime = "nodejs";
 
 const SUPABASE_URL = process.env.NEXT_PUBLIC_SUPABASE_URL;
-const SUPABASE_SERVICE_ROLE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY;
+const SUPABASE_SERVICE_ROLE_KEY =
+  process.env.SUPABASE_SERVICE_ROLE_KEY;
 
-const supabase =
-  SUPABASE_URL && SUPABASE_SERVICE_ROLE_KEY
-    ? createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY)
-    : null;
+const STORAGE_BUCKET =
+  process.env.SUPABASE_STORAGE_BUCKET || "client-documents";
 
-const CLIENT_BRIEF_DOCUMENT_TYPES = [
-  "kitchen_brief",
-  "wardrobe_brief",
-  "tv_unit_brief",
-  "full_interior_brief",
-  "client_brief",
+const PROJECT_STAGES = [
+  {
+    number: 1,
+    key: "consultation",
+    name: "Consultation",
+  },
+  {
+    number: 2,
+    key: "client_brief",
+    name: "Client Brief",
+  },
+  {
+    number: 3,
+    key: "site_survey",
+    name: "Site Survey",
+  },
+  {
+    number: 4,
+    key: "concept",
+    name: "Concept",
+  },
+  {
+    number: 5,
+    key: "spatial_planning",
+    name: "Spatial Planning",
+  },
+  {
+    number: 6,
+    key: "3d_development",
+    name: "3D Development",
+  },
+  {
+    number: 7,
+    key: "technical_documentation",
+    name: "Technical Documentation",
+  },
+  {
+    number: 8,
+    key: "fabrication",
+    name: "Fabrication",
+  },
+  {
+    number: 9,
+    key: "installation",
+    name: "Installation",
+  },
 ];
 
-function cleanText(value: unknown): string {
-  if (value === null || value === undefined) {
-    return "";
-  }
-
-  return String(value).trim();
-}
-
-function normalizeBriefType(value: unknown): string {
-  const type = cleanText(value).toLowerCase();
-
-  if (
-    type === "kitchen" ||
-    type === "kitchen_brief" ||
-    type === "kitchen brief"
-  ) {
-    return "kitchen_brief";
-  }
-
-  if (
-    type === "wardrobe" ||
-    type === "wardrobe_brief" ||
-    type === "wardrobe brief" ||
-    type === "closet" ||
-    type === "closet_brief"
-  ) {
-    return "wardrobe_brief";
-  }
-
-  if (
-    type === "tv" ||
-    type === "tv_unit" ||
-    type === "tv_unit_brief" ||
-    type === "tv unit" ||
-    type === "tv unit brief"
-  ) {
-    return "tv_unit_brief";
-  }
-
-  if (
-    type === "full_interior" ||
-    type === "full_interior_brief" ||
-    type === "full interior" ||
-    type === "full interior brief"
-  ) {
-    return "full_interior_brief";
-  }
-
-  if (
-    type === "client_brief" ||
-    type === "client brief"
-  ) {
-    return "client_brief";
-  }
-
-  return type || "client_brief";
-}
-
-function getDocumentType(briefData: AnyObject): string {
-  return normalizeBriefType(
-    briefData.documentType ||
-      briefData.document_type ||
-      briefData.briefType ||
-      briefData.brief_type ||
-      briefData.type ||
-      briefData.form?.documentType ||
-      briefData.form?.document_type ||
-      briefData.form?.briefType ||
-      briefData.form?.brief_type ||
-      briefData.form?.type
-  );
-}
-
-function getClient(briefData: AnyObject): AnyObject {
-  return (
-    briefData.client ||
-    briefData.form?.client ||
-    briefData.customer ||
-    briefData.form?.customer ||
-    {}
-  );
-}
-
-function getClientId(briefData: AnyObject): string {
-  const client = getClient(briefData);
-
-  return (
-    cleanText(client.id) ||
-    cleanText(client.clientId) ||
-    cleanText(briefData.clientId) ||
-    cleanText(briefData.client_id) ||
-    cleanText(briefData.form?.clientId) ||
-    cleanText(briefData.form?.client_id) ||
-    ""
-  );
-}
-
-function getClientName(briefData: AnyObject): string {
-  const client = getClient(briefData);
-
-  const directName =
-    cleanText(client.name) ||
-    cleanText(client.fullName) ||
-    cleanText(client.full_name);
-
-  if (directName) {
-    return directName;
-  }
-
-  const firstName =
-    cleanText(client.firstName) ||
-    cleanText(client.first_name);
-
-  const lastName =
-    cleanText(client.lastName) ||
-    cleanText(client.last_name);
-
-  const combined = `${firstName} ${lastName}`.trim();
-
-  if (combined) {
-    return combined;
-  }
-
-  return (
-    cleanText(briefData.clientName) ||
-    cleanText(briefData.client_name) ||
-    cleanText(briefData.name) ||
-    "KBX Client"
-  );
-}
-
-function getClientEmail(briefData: AnyObject): string {
-  const client = getClient(briefData);
-
-  return (
-    cleanText(client.email) ||
-    cleanText(client.emailAddress) ||
-    cleanText(client.email_address) ||
-    cleanText(briefData.clientEmail) ||
-    cleanText(briefData.client_email) ||
-    cleanText(briefData.email) ||
-    cleanText(briefData.form?.email) ||
-    ""
-  );
-}
-
-function getProjectName(briefData: AnyObject): string {
-  return (
-    cleanText(briefData.projectName) ||
-    cleanText(briefData.project_name) ||
-    cleanText(briefData.form?.projectName) ||
-    cleanText(briefData.form?.project_name) ||
-    cleanText(briefData.project) ||
-    "Interior Design Project"
-  );
-}
-
-function getProjectLocation(briefData: AnyObject): string {
-  return (
-    cleanText(briefData.projectLocation) ||
-    cleanText(briefData.project_location) ||
-    cleanText(briefData.location) ||
-    cleanText(briefData.form?.projectLocation) ||
-    cleanText(briefData.form?.project_location) ||
-    ""
-  );
-}
-
-function formatValue(value: unknown): string {
-  if (value === null || value === undefined) {
-    return "";
-  }
-
-  if (Array.isArray(value)) {
-    return value
-      .map((item) => {
-        if (
-          typeof item === "object" &&
-          item !== null
-        ) {
-          return JSON.stringify(item);
-        }
-
-        return String(item);
-      })
-      .join(", ");
-  }
-
-  if (typeof value === "object") {
-    try {
-      return JSON.stringify(value, null, 2);
-    } catch {
-      return String(value);
-    }
-  }
-
-  return String(value);
-}
-
-function flattenObject(
-  value: AnyObject,
-  prefix = ""
-): Array<{ label: string; value: string }> {
-  const result: Array<{
-    label: string;
-    value: string;
-  }> = [];
-
-  for (const [key, rawValue] of Object.entries(value)) {
-    if (
-      key === "client" ||
-      key === "form" ||
-      key === "files" ||
-      key === "attachments"
-    ) {
-      continue;
-    }
-
-    const label = prefix
-      ? `${prefix} / ${key}`
-      : key;
-
-    if (
-      rawValue &&
-      typeof rawValue === "object" &&
-      !Array.isArray(rawValue)
-    ) {
-      result.push(
-        ...flattenObject(rawValue, label)
-      );
-
-      continue;
-    }
-
-    const formatted = formatValue(rawValue);
-
-    if (formatted) {
-      result.push({
-        label,
-        value: formatted,
-      });
-    }
-  }
-
-  return result;
-}
-
-function sanitizeFileName(value: string): string {
-  return value
-    .replace(/[^a-zA-Z0-9._-]+/g, "-")
-    .replace(/-+/g, "-")
-    .replace(/^-|-$/g, "")
-    .slice(0, 120);
-}
-
-async function generatePdf(
-  briefData: AnyObject,
-  documentType: string
-): Promise<Buffer> {
-  return new Promise((resolve, reject) => {
-    try {
-      const doc = new PDFDocument({
-        size: "A4",
-        margin: 50,
-      });
-
-      const chunks: Buffer[] = [];
-
-      doc.on("data", (chunk: Buffer) => {
-        chunks.push(chunk);
-      });
-
-      doc.on("end", () => {
-        resolve(Buffer.concat(chunks));
-      });
-
-      doc.on("error", reject);
-
-      const clientName = getClientName(briefData);
-      const clientEmail = getClientEmail(briefData);
-      const projectName = getProjectName(briefData);
-      const projectLocation =
-        getProjectLocation(briefData);
-
-      doc
-        .fontSize(20)
-        .font("Helvetica-Bold")
-        .text("KBX SPATIAL ATELIER", {
-          align: "center",
-        });
-
-      doc.moveDown(0.5);
-
-      doc
-        .fontSize(12)
-        .font("Helvetica")
-        .text("Client Project Brief", {
-          align: "center",
-        });
-
-      doc.moveDown(1.5);
-
-      doc
-        .fontSize(14)
-        .font("Helvetica-Bold")
-        .text(
-          documentType
-            .replace(/_/g, " ")
-            .replace(
-              /\b\w/g,
-              (letter) => letter.toUpperCase()
-            )
-        );
-
-      doc.moveDown(1);
-
-      doc.fontSize(10).font("Helvetica");
-
-      const projectInformation = [
-        ["Client", clientName],
-        ["Email", clientEmail],
-        ["Project", projectName],
-        ["Location", projectLocation],
-      ];
-
-      for (const [label, value] of projectInformation) {
-        if (!value) continue;
-
-        doc
-          .font("Helvetica-Bold")
-          .text(`${label}: `, {
-            continued: true,
-          })
-          .font("Helvetica")
-          .text(value);
-
-        doc.moveDown(0.3);
-      }
-
-      doc.moveDown(1);
-
-      const entries = flattenObject(briefData);
-
-      for (const entry of entries) {
-        if (!entry.value) continue;
-
-        if (doc.y > 720) {
-          doc.addPage();
-        }
-
-        doc
-          .fontSize(10)
-          .font("Helvetica-Bold")
-          .text(entry.label);
-
-        doc
-          .fontSize(9)
-          .font("Helvetica")
-          .text(entry.value, {
-            width: 490,
-          });
-
-        doc.moveDown(0.7);
-      }
-
-      doc.moveDown(1);
-
-      doc
-        .fontSize(8)
-        .font("Helvetica")
-        .text(
-          `Generated by KBX Spatial Atelier • ${new Date().toLocaleString(
-            "en-GH"
-          )}`,
-          {
-            align: "center",
-          }
-        );
-
-      doc.end();
-    } catch (error) {
-      reject(error);
-    }
-  });
-}
-
-async function savePdfToSupabase(
-  briefData: AnyObject,
-  documentType: string,
-  pdfBuffer: Buffer
-) {
-  if (!supabase) {
+function getSupabaseAdmin() {
+  if (!SUPABASE_URL) {
     throw new Error(
-      "Supabase is not configured. Please check NEXT_PUBLIC_SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY."
+      "NEXT_PUBLIC_SUPABASE_URL is not configured"
     );
   }
 
-  const clientId = getClientId(briefData);
-
-  if (!clientId) {
+  if (!SUPABASE_SERVICE_ROLE_KEY) {
     throw new Error(
-      "Client ID is missing from the submitted brief."
+      "SUPABASE_SERVICE_ROLE_KEY is not configured"
     );
   }
 
-  const clientName = getClientName(briefData);
-  const clientEmail = getClientEmail(briefData);
-  const projectName = getProjectName(briefData);
-
-  const pdfFileName = `${sanitizeFileName(
-    clientName || "client"
-  )}-${sanitizeFileName(
-    documentType
-  )}-${Date.now()}.pdf`;
-
-  const storagePath = `${sanitizeFileName(
-    clientId
-  )}/${pdfFileName}`;
-
-  const { error: uploadError } =
-    await supabase.storage
-      .from("client-documents")
-      .upload(storagePath, pdfBuffer, {
-        contentType: "application/pdf",
-        upsert: true,
-      });
-
-  if (uploadError) {
-    throw new Error(
-      `Failed to upload PDF to Supabase Storage: ${uploadError.message}`
-    );
-  }
-
-  const { data: publicUrlData } =
-    supabase.storage
-      .from("client-documents")
-      .getPublicUrl(storagePath);
-
-  const documentUrl =
-    publicUrlData?.publicUrl || null;
-
-  const documentName =
-    projectName &&
-    projectName !== "Interior Design Project"
-      ? `${projectName} - ${documentType.replace(
-          /_/g,
-          " "
-        )}`
-      : `${clientName} - ${documentType.replace(
-          /_/g,
-          " "
-        )}`;
-
-  const {
-    data: insertedDocument,
-    error: insertError,
-  } = await supabase
-    .from("client_documents")
-    .insert({
-      client_id: clientId,
-      document_type: documentType,
-      document_name: documentName,
-      file_url: documentUrl,
-      storage_path: storagePath,
-      mime_type: "application/pdf",
-      file_size: pdfBuffer.length,
-      metadata: {
-        client_name: clientName,
-        client_email: clientEmail,
-        project_name: projectName,
-        source: "client_brief_submission",
-      },
-    })
-    .select()
-    .single();
-
-  if (insertError) {
-    try {
-      await supabase.storage
-        .from("client-documents")
-        .remove([storagePath]);
-    } catch {
-      // Ignore cleanup failure.
-    }
-
-    throw new Error(
-      `Failed to save client document: ${insertError.message}`
-    );
-  }
-
-  return {
-    document: insertedDocument,
-    documentUrl,
-    storagePath,
-    clientId,
-  };
-}
-
-async function sendEmail(
-  briefData: AnyObject,
-  documentType: string,
-  pdfBuffer: Buffer,
-  documentName: string
-) {
-  const smtpHost = process.env.SMTP_HOST;
-  const smtpPort = process.env.SMTP_PORT;
-  const smtpUser = process.env.SMTP_USER;
-  const smtpPassword =
-    process.env.SMTP_PASSWORD;
-
-  const emailFrom =
-    process.env.EMAIL_FROM ||
-    process.env.SMTP_FROM ||
-    smtpUser ||
-    "";
-
-  if (
-    !smtpHost ||
-    !smtpPort ||
-    !smtpUser ||
-    !smtpPassword
-  ) {
-    console.warn(
-      "SMTP configuration is missing. Skipping email notification."
-    );
-
-    return {
-      sent: false,
-      skipped: true,
-    };
-  }
-
-  const clientEmail =
-    getClientEmail(briefData);
-  const clientName =
-    getClientName(briefData);
-  const projectName =
-    getProjectName(briefData);
-
-  const transporter =
-    nodemailer.createTransport({
-      host: smtpHost,
-      port: Number(smtpPort),
-      secure: Number(smtpPort) === 465,
+  return createClient(
+    SUPABASE_URL,
+    SUPABASE_SERVICE_ROLE_KEY,
+    {
       auth: {
-        user: smtpUser,
-        pass: smtpPassword,
+        autoRefreshToken: false,
+        persistSession: false,
       },
-    });
-
-  const recipients = new Set<string>();
-
-  if (clientEmail) {
-    recipients.add(clientEmail);
-  }
-
-  const adminEmail =
-    process.env.ADMIN_EMAIL ||
-    process.env.NOTIFICATION_EMAIL ||
-    "";
-
-  if (adminEmail) {
-    recipients.add(adminEmail);
-  }
-
-  if (recipients.size === 0) {
-    return {
-      sent: false,
-      skipped: true,
-    };
-  }
-
-  await transporter.sendMail({
-    from: emailFrom,
-    to: Array.from(recipients).join(","),
-    subject: `KBX Spatial Atelier — ${documentType.replace(
-      /_/g,
-      " "
-    )} submitted`,
-    text: `A new client brief has been submitted.
-
-Client: ${clientName}
-Email: ${clientEmail || "Not provided"}
-Project: ${projectName}
-Brief Type: ${documentType.replace(
-      /_/g,
-      " "
-    )}
-
-The submitted brief PDF is attached.`,
-    attachments: [
-      {
-        filename: documentName,
-        content: pdfBuffer,
-        contentType: "application/pdf",
-      },
-    ],
-  });
-
-  return {
-    sent: true,
-    skipped: false,
-  };
+    }
+  );
 }
 
-/**
- * Extract the actual brief object from the incoming request.
- *
- * Supports:
- * 1. application/json
- * 2. multipart/form-data
- *
- * This is important because the existing client brief flow
- * may be using FormData for reference files/attachments.
- */
-async function readBriefData(
-  request: NextRequest
-): Promise<AnyObject> {
-  const contentType =
-    request.headers.get("content-type") || "";
-
-  /*
-   * Normal JSON request
-   */
-  if (
-    contentType
-      .toLowerCase()
-      .includes("application/json")
-  ) {
-    const rawBody = await request.text();
-
-    if (!rawBody.trim()) {
-      throw new Error(
-        "The submitted brief is empty."
-      );
-    }
-
-    try {
-      const parsed = JSON.parse(rawBody);
-
-      if (
-        !parsed ||
-        typeof parsed !== "object" ||
-        Array.isArray(parsed)
-      ) {
-        throw new Error(
-          "Invalid brief data."
-        );
-      }
-
-      return parsed;
-    } catch (error) {
-      console.error(
-        "JSON brief parsing failed:",
-        error
-      );
-
-      throw new Error(
-        "The submitted brief contains invalid JSON."
-      );
-    }
-  }
-
-  /*
-   * FormData / multipart request
-   */
-  if (
-    contentType
-      .toLowerCase()
-      .includes("multipart/form-data")
-  ) {
-    const formData =
-      await request.formData();
-
-    const possibleJsonKeys = [
-      "briefData",
-      "brief",
-      "data",
-      "formData",
-      "payload",
-      "clientBrief",
-    ];
-
-    /*
-     * First look for a field containing the
-     * complete JSON brief.
-     */
-    for (const key of possibleJsonKeys) {
-      const value = formData.get(key);
-
-      if (typeof value !== "string") {
-        continue;
-      }
-
-      if (!value.trim()) {
-        continue;
-      }
-
-      try {
-        const parsed = JSON.parse(value);
-
-        if (
-          parsed &&
-          typeof parsed === "object" &&
-          !Array.isArray(parsed)
-        ) {
-          return parsed;
-        }
-      } catch {
-        // Continue checking other fields.
-      }
-    }
-
-    /*
-     * Some versions of the client may submit the
-     * fields directly into FormData rather than putting
-     * them inside one JSON field.
-     */
-    const reconstructed: AnyObject = {};
-
-    for (const [
-      key,
-      value,
-    ] of formData.entries()) {
-      if (
-        typeof value === "string"
-      ) {
-        const trimmed = value.trim();
-
-        if (!trimmed) {
-          continue;
-        }
-
-        /*
-         * Try JSON for individual fields.
-         */
-        try {
-          reconstructed[key] =
-            JSON.parse(trimmed);
-        } catch {
-          reconstructed[key] = value;
-        }
-      }
-    }
-
-    if (
-      Object.keys(reconstructed)
-        .length > 0
-    ) {
-      return reconstructed;
-    }
-
-    throw new Error(
-      "The submitted brief form is empty."
-    );
-  }
-
-  /*
-   * Fallback for an unusual content type.
-   */
-  const rawBody = await request.text();
-
-  if (!rawBody.trim()) {
-    throw new Error(
-      "The submitted brief is empty."
-    );
-  }
+export async function POST(request: NextRequest) {
+  let uploadedStoragePath: string | null = null;
 
   try {
-    const parsed = JSON.parse(rawBody);
+    const formData = await request.formData();
 
-    if (
-      !parsed ||
-      typeof parsed !== "object" ||
-      Array.isArray(parsed)
-    ) {
-      throw new Error();
-    }
-
-    return parsed;
-  } catch {
-    throw new Error(
-      "The submitted brief could not be read."
-    );
-  }
-}
-
-export async function POST(
-  request: NextRequest
-) {
-  try {
-    const briefData =
-      await readBriefData(request);
-
-    const documentType =
-      getDocumentType(briefData);
+    const file = formData.get("file");
 
     const clientId =
-      getClientId(briefData);
+      String(
+        formData.get("clientId") || ""
+      ).trim();
 
     const clientName =
-      getClientName(briefData);
+      String(
+        formData.get("clientName") || ""
+      ).trim();
 
     const clientEmail =
-      getClientEmail(briefData);
+      String(
+        formData.get("clientEmail") || ""
+      ).trim();
 
     const projectName =
-      getProjectName(briefData);
+      String(
+        formData.get("projectName") || ""
+      ).trim();
 
-    console.log(
-      "========== KBX BRIEF SUBMISSION =========="
-    );
+    const stageNumberValue =
+      String(
+        formData.get("stageNumber") || ""
+      ).trim();
 
-    console.log(
-      "Content-Type:",
-      request.headers.get(
-        "content-type"
-      )
-    );
+    const documentName =
+      String(
+        formData.get("documentName") || ""
+      ).trim();
 
-    console.log(
-      "Document type:",
-      documentType
-    );
+    const documentType =
+      String(
+        formData.get("documentType") || ""
+      ).trim();
 
-    console.log(
-      "Client ID:",
-      clientId
-    );
-
-    console.log(
-      "Client name:",
-      clientName
-    );
-
-    console.log(
-      "Client email:",
-      clientEmail
-    );
-
-    console.log(
-      "Project:",
-      projectName
-    );
-
-    console.log(
-      "=========================================="
-    );
-
-    if (
-      !CLIENT_BRIEF_DOCUMENT_TYPES.includes(
-        documentType
-      )
-    ) {
+    if (!(file instanceof File)) {
       return NextResponse.json(
         {
           success: false,
-          error: `Unsupported brief type: ${documentType}`,
+          error: "A file is required.",
         },
         { status: 400 }
       );
@@ -888,86 +140,526 @@ export async function POST(
       return NextResponse.json(
         {
           success: false,
-          error:
-            "Client ID is missing from the submitted brief.",
+          error: "clientId is required.",
         },
         { status: 400 }
       );
     }
 
-    const pdfBuffer =
-      await generatePdf(
-        briefData,
-        documentType
+    if (!stageNumberValue) {
+      return NextResponse.json(
+        {
+          success: false,
+          error: "stageNumber is required.",
+        },
+        { status: 400 }
+      );
+    }
+
+    if (!documentName) {
+      return NextResponse.json(
+        {
+          success: false,
+          error: "documentName is required.",
+        },
+        { status: 400 }
+      );
+    }
+
+    if (!documentType) {
+      return NextResponse.json(
+        {
+          success: false,
+          error: "documentType is required.",
+        },
+        { status: 400 }
+      );
+    }
+
+    const stageNumber =
+      Number(stageNumberValue);
+
+    if (
+      !Number.isInteger(stageNumber) ||
+      stageNumber < 1 ||
+      stageNumber > PROJECT_STAGES.length
+    ) {
+      return NextResponse.json(
+        {
+          success: false,
+          error:
+            "Invalid project stage.",
+        },
+        { status: 400 }
+      );
+    }
+
+    const selectedStage =
+      PROJECT_STAGES.find(
+        (stage) =>
+          stage.number === stageNumber
       );
 
-    const saved =
-      await savePdfToSupabase(
-        briefData,
-        documentType,
-        pdfBuffer
+    if (!selectedStage) {
+      return NextResponse.json(
+        {
+          success: false,
+          error:
+            "Project stage could not be found.",
+        },
+        { status: 400 }
       );
+    }
 
-    const documentName =
-      saved.document?.document_name ||
-      `${clientName} - ${documentType.replace(
-        /_/g,
-        " "
-      )}.pdf`;
+    const supabase =
+      getSupabaseAdmin();
 
-    let emailResult = {
-      sent: false,
-      skipped: true,
-    };
+    /*
+     * Make sure the stage exists for this client.
+     *
+     * If it does not exist yet, create all nine stages
+     * with the correct initial status.
+     */
+    const { data: existingStages, error: stagesError } =
+      await supabase
+        .from("project_stages")
+        .select("*")
+        .eq("client_id", clientId)
+        .order("stage_number", {
+          ascending: true,
+        });
 
-    try {
-      emailResult =
-        await sendEmail(
-          briefData,
-          documentType,
-          pdfBuffer,
-          documentName
-        );
-    } catch (emailError) {
+    if (stagesError) {
       console.error(
-        "Email notification failed:",
-        emailError
+        "Project stages lookup failed:",
+        stagesError
       );
+
+      return NextResponse.json(
+        {
+          success: false,
+          error:
+            "Failed to load project stages.",
+          details:
+            stagesError.message,
+        },
+        { status: 500 }
+      );
+    }
+
+    if (
+      !existingStages ||
+      existingStages.length === 0
+    ) {
+      const initialStages =
+        PROJECT_STAGES.map(
+          (stage) => ({
+            client_id: clientId,
+            stage_number:
+              stage.number,
+            stage_key:
+              stage.key,
+            stage_name:
+              stage.name,
+            status:
+              stage.number === 1
+                ? "completed"
+                : stage.number === 2
+                ? "current"
+                : "upcoming",
+            completed_at:
+              stage.number === 1
+                ? new Date().toISOString()
+                : null,
+          })
+        );
+
+      const {
+        error: createStagesError,
+      } = await supabase
+        .from("project_stages")
+        .insert(initialStages);
+
+      if (createStagesError) {
+        console.error(
+          "Project stages creation failed:",
+          createStagesError
+        );
+
+        return NextResponse.json(
+          {
+            success: false,
+            error:
+              "Failed to initialize project stages.",
+            details:
+              createStagesError.message,
+          },
+          { status: 500 }
+        );
+      }
+    }
+
+    /*
+     * Re-read the stages after initialization.
+     */
+    const {
+      data: stages,
+      error: reloadStagesError,
+    } = await supabase
+      .from("project_stages")
+      .select("*")
+      .eq("client_id", clientId)
+      .order("stage_number", {
+        ascending: true,
+      });
+
+    if (reloadStagesError) {
+      console.error(
+        "Project stages reload failed:",
+        reloadStagesError
+      );
+
+      return NextResponse.json(
+        {
+          success: false,
+          error:
+            "Failed to reload project stages.",
+          details:
+            reloadStagesError.message,
+        },
+        { status: 500 }
+      );
+    }
+
+    const currentStage =
+      stages?.find(
+        (stage) =>
+          stage.status === "current"
+      );
+
+    /*
+     * Prevent accidentally completing a future stage
+     * while an earlier stage is still current.
+     *
+     * The exception is stage 1, because consultation
+     * is already treated as completed when the project
+     * stage system is initialized.
+     */
+    if (
+      stageNumber !== 1 &&
+      currentStage &&
+      stageNumber >
+        currentStage.stage_number
+    ) {
+      return NextResponse.json(
+        {
+          success: false,
+          error:
+            `You must complete "${currentStage.stage_name}" before completing "${selectedStage.name}".`,
+        },
+        { status: 400 }
+      );
+    }
+
+    /*
+     * Create a unique storage path.
+     */
+    const safeFileName =
+      file.name
+        .replace(
+          /[^a-zA-Z0-9._-]/g,
+          "_"
+        )
+        .replace(
+          /_+/g,
+          "_"
+        );
+
+    const storagePath =
+      `${clientId}/stages/${selectedStage.key}/${Date.now()}-${safeFileName}`;
+
+    uploadedStoragePath =
+      storagePath;
+
+    const fileBuffer =
+      Buffer.from(
+        await file.arrayBuffer()
+      );
+
+    /*
+     * Upload the physical file to
+     * Supabase Storage.
+     */
+    const {
+      error: uploadError,
+    } = await supabase.storage
+      .from(STORAGE_BUCKET)
+      .upload(
+        storagePath,
+        fileBuffer,
+        {
+          contentType:
+            file.type ||
+            "application/pdf",
+          upsert: false,
+        }
+      );
+
+    if (uploadError) {
+      console.error(
+        "Document upload failed:",
+        uploadError
+      );
+
+      return NextResponse.json(
+        {
+          success: false,
+          error:
+            "Failed to upload document.",
+          details:
+            uploadError.message,
+        },
+        { status: 500 }
+      );
+    }
+
+    /*
+     * Create the document record.
+     */
+    const {
+      data: document,
+      error: documentError,
+    } = await supabase
+      .from("client_documents")
+      .insert({
+        client_id: clientId,
+
+        client_name:
+          clientName || null,
+
+        client_email:
+          clientEmail || null,
+
+        project_name:
+          projectName ||
+          "KBX Spatial Atelier Project",
+
+        document_name:
+          documentName,
+
+        document_type:
+          documentType,
+
+        storage_path:
+          storagePath,
+
+        file_path:
+          storagePath,
+
+        mime_type:
+          file.type ||
+          "application/pdf",
+
+        file_size:
+          file.size,
+
+        file_name:
+          file.name,
+
+        title:
+          documentName,
+      })
+      .select()
+      .single();
+
+    if (documentError) {
+      console.error(
+        "Document database insert failed:",
+        documentError
+      );
+
+      await supabase.storage
+        .from(STORAGE_BUCKET)
+        .remove([
+          storagePath,
+        ]);
+
+      uploadedStoragePath =
+        null;
+
+      return NextResponse.json(
+        {
+          success: false,
+          error:
+            "Document was uploaded but could not be saved.",
+          details:
+            documentError.message,
+        },
+        { status: 500 }
+      );
+    }
+
+    /*
+     * Mark the selected stage as completed.
+     */
+    const {
+      error: completeStageError,
+    } = await supabase
+      .from("project_stages")
+      .update({
+        status:
+          "completed",
+        document_id:
+          document.id,
+        completed_at:
+          new Date().toISOString(),
+      })
+      .eq(
+        "client_id",
+        clientId
+      )
+      .eq(
+        "stage_number",
+        stageNumber
+      );
+
+    if (completeStageError) {
+      console.error(
+        "Stage completion failed:",
+        completeStageError
+      );
+
+      /*
+       * Remove the document record and
+       * uploaded file because the stage
+       * could not be completed correctly.
+       */
+      await supabase
+        .from("client_documents")
+        .delete()
+        .eq(
+          "id",
+          document.id
+        );
+
+      await supabase.storage
+        .from(STORAGE_BUCKET)
+        .remove([
+          storagePath,
+        ]);
+
+      return NextResponse.json(
+        {
+          success: false,
+          error:
+            "The document was uploaded, but the project stage could not be completed.",
+          details:
+            completeStageError.message,
+        },
+        { status: 500 }
+      );
+    }
+
+    /*
+     * Make the next stage current.
+     */
+    const nextStage =
+      PROJECT_STAGES.find(
+        (stage) =>
+          stage.number ===
+          stageNumber + 1
+      );
+
+    if (nextStage) {
+      const {
+        error: nextStageError,
+      } = await supabase
+        .from("project_stages")
+        .update({
+          status:
+            "current",
+        })
+        .eq(
+          "client_id",
+          clientId
+        )
+        .eq(
+          "stage_number",
+          nextStage.number
+        );
+
+      if (nextStageError) {
+        console.error(
+          "Next stage update failed:",
+          nextStageError
+        );
+
+        return NextResponse.json(
+          {
+            success: false,
+            error:
+              "The stage was completed, but the next stage could not be activated.",
+            details:
+              nextStageError.message,
+          },
+          { status: 500 }
+        );
+      }
     }
 
     return NextResponse.json({
       success: true,
+
       message:
-        "Client brief submitted successfully.",
-      clientId,
-      documentId:
-        saved.document?.id || null,
-      documentType,
-      documentName,
-      documentUrl:
-        saved.documentUrl,
-      storagePath:
-        saved.storagePath,
-      emailSent:
-        emailResult.sent,
+        `${selectedStage.name} completed successfully.`,
+
+      document,
+
+      completedStage:
+        selectedStage,
+
+      nextStage:
+        nextStage || null,
     });
   } catch (error) {
     console.error(
-      "SEND BRIEF ERROR:",
+      "Unexpected upload document error:",
       error
     );
 
-    const message =
-      error instanceof Error
-        ? error.message
-        : "An unexpected error occurred while submitting the brief.";
+    /*
+     * If something unexpected happens after
+     * the file was uploaded, attempt to clean
+     * up the storage file.
+     */
+    if (uploadedStoragePath) {
+      try {
+        const supabase =
+          getSupabaseAdmin();
+
+        await supabase.storage
+          .from(STORAGE_BUCKET)
+          .remove([
+            uploadedStoragePath,
+          ]);
+      } catch (cleanupError) {
+        console.error(
+          "Storage cleanup failed:",
+          cleanupError
+        );
+      }
+    }
 
     return NextResponse.json(
       {
         success: false,
-        error: message,
+        error:
+          error instanceof Error
+            ? error.message
+            : "Unexpected server error.",
       },
       { status: 500 }
     );
   }
 }
+
