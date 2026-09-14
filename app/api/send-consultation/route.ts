@@ -12,6 +12,14 @@ if (!resendApiKey) {
   console.warn("RESEND_API_KEY is not configured.");
 }
 
+if (!recipientEmail) {
+  console.warn("RESEND_TO_EMAIL is not configured.");
+}
+
+if (!fromEmail) {
+  console.warn("RESEND_FROM_EMAIL is not configured.");
+}
+
 export async function POST(request: Request) {
   try {
     const body = await request.json();
@@ -87,6 +95,10 @@ export async function POST(request: Request) {
       );
     }
 
+    /* -------------------------------------------------------
+       EMAIL CONFIGURATION
+    ------------------------------------------------------- */
+
     if (!resendApiKey) {
       return NextResponse.json(
         {
@@ -121,7 +133,7 @@ export async function POST(request: Request) {
     }
 
     /* -------------------------------------------------------
-       HELPER FUNCTIONS
+       HELPERS
     ------------------------------------------------------- */
 
     const safeText = (value: unknown) => {
@@ -183,14 +195,6 @@ export async function POST(request: Request) {
     const lightGrey = rgb(0.94, 0.94, 0.92);
     const white = rgb(1, 1, 1);
 
-    const checkPage = (requiredHeight = 60) => {
-      if (y < margin + requiredHeight) {
-        page = pdfDoc.addPage([595.28, 841.89]);
-        y = pageHeight - margin;
-        drawFooter();
-      }
-    };
-
     const drawFooter = () => {
       page.drawLine({
         start: {
@@ -213,16 +217,21 @@ export async function POST(request: Request) {
         color: grey,
       });
 
-      page.drawText(
-        "CONSULTATION REQUEST",
-        {
-          x: pageWidth - margin - 105,
-          y: 20,
-          size: 7,
-          font: regularFont,
-          color: grey,
-        }
-      );
+      page.drawText("CONSULTATION REQUEST", {
+        x: pageWidth - margin - 105,
+        y: 20,
+        size: 7,
+        font: regularFont,
+        color: grey,
+      });
+    };
+
+    const checkPage = (requiredHeight = 60) => {
+      if (y < margin + requiredHeight) {
+        page = pdfDoc.addPage([595.28, 841.89]);
+        y = pageHeight - margin;
+        drawFooter();
+      }
     };
 
     const drawWrappedText = (
@@ -284,7 +293,10 @@ export async function POST(request: Request) {
       return currentY;
     };
 
-    const drawSectionTitle = (number: string, title: string) => {
+    const drawSectionTitle = (
+      number: string,
+      title: string
+    ) => {
       checkPage(70);
 
       page.drawText(number, {
@@ -379,16 +391,13 @@ export async function POST(request: Request) {
       color: white,
     });
 
-    page.drawText(
-      "FREE CONSULTATION REQUEST",
-      {
-        x: margin,
-        y: pageHeight - 94,
-        size: 8,
-        font: regularFont,
-        color: white,
-      }
-    );
+    page.drawText("FREE CONSULTATION REQUEST", {
+      x: margin,
+      y: pageHeight - 94,
+      size: 8,
+      font: regularFont,
+      color: white,
+    });
 
     y = pageHeight - 145;
 
@@ -402,16 +411,13 @@ export async function POST(request: Request) {
 
     y -= 18;
 
-    page.drawText(
-      "Client consultation details",
-      {
-        x: margin,
-        y,
-        size: 9,
-        font: regularFont,
-        color: grey,
-      }
-    );
+    page.drawText("Client consultation details", {
+      x: margin,
+      y,
+      size: 9,
+      font: regularFont,
+      color: grey,
+    });
 
     y -= 32;
 
@@ -421,25 +427,13 @@ export async function POST(request: Request) {
 
     drawSectionTitle("01", "Client Details");
 
-    drawField(
-      "FULL NAME",
-      safeText(fullName)
-    );
+    drawField("FULL NAME", safeText(fullName));
 
-    drawField(
-      "EMAIL ADDRESS",
-      safeText(email)
-    );
+    drawField("EMAIL ADDRESS", safeText(email));
 
-    drawField(
-      "PHONE / WHATSAPP",
-      safeText(phone)
-    );
+    drawField("PHONE / WHATSAPP", safeText(phone));
 
-    drawField(
-      "AREA / CITY",
-      safeText(areaCity)
-    );
+    drawField("AREA / CITY", safeText(areaCity));
 
     drawField(
       "SPECIFIC LOCATION / ADDRESS",
@@ -452,7 +446,10 @@ export async function POST(request: Request) {
        SECTION 02 — CONSULTATION METHOD
     ------------------------------------------------------- */
 
-    drawSectionTitle("02", "Consultation Method");
+    drawSectionTitle(
+      "02",
+      "Consultation Method"
+    );
 
     drawField(
       "METHOD",
@@ -533,7 +530,10 @@ export async function POST(request: Request) {
        SECTION 04 — CLIENT MESSAGE
     ------------------------------------------------------- */
 
-    drawSectionTitle("04", "Client Message");
+    drawSectionTitle(
+      "04",
+      "Client Message"
+    );
 
     drawField(
       "MESSAGE",
@@ -548,7 +548,10 @@ export async function POST(request: Request) {
        SECTION 05 — REQUEST STATUS
     ------------------------------------------------------- */
 
-    drawSectionTitle("05", "Request Status");
+    drawSectionTitle(
+      "05",
+      "Request Status"
+    );
 
     drawField(
       "REQUEST STATUS",
@@ -578,16 +581,13 @@ export async function POST(request: Request) {
       color: lightGrey,
     });
 
-    page.drawText(
-      "IMPORTANT",
-      {
-        x: margin + 14,
-        y: y - 20,
-        size: 8,
-        font: boldFont,
-        color: RED,
-      }
-    );
+    page.drawText("IMPORTANT", {
+      x: margin + 14,
+      y: y - 20,
+      size: 8,
+      font: boldFont,
+      color: RED,
+    });
 
     drawWrappedText(
       "The selected date and time are a consultation request and are not confirmed until a KBX Project Manager contacts the client.",
@@ -613,78 +613,87 @@ export async function POST(request: Request) {
     );
 
     /* -------------------------------------------------------
-       EMAIL
+       SEND EMAIL
     ------------------------------------------------------- */
 
     const resend = new Resend(resendApiKey);
 
-    const emailSubject = `New Free Consultation Request — ${fullName}`;
+    const emailSubject =
+      `New Free Consultation Request — ${fullName}`;
 
     const emailHtml = `
-      <div style="font-family: Arial, Helvetica, sans-serif; background:#f7f7f5; padding:40px 20px;">
-        <div style="max-width:680px; margin:0 auto; background:#ffffff; border:1px solid #e5e5e5;">
+      <div style="font-family:Arial,Helvetica,sans-serif;background:#f7f7f5;padding:40px 20px;">
+        <div style="max-width:680px;margin:0 auto;background:#ffffff;border:1px solid #e5e5e5;">
 
-          <div style="background:#910B0A; padding:28px 32px; color:#ffffff;">
-            <div style="font-size:22px; font-weight:700; letter-spacing:0.02em;">
+          <div style="background:#910B0A;padding:28px 32px;color:#ffffff;">
+            <div style="font-size:22px;font-weight:700;letter-spacing:0.02em;">
               KBX
             </div>
-            <div style="font-size:10px; font-weight:600; letter-spacing:0.2em; margin-top:4px;">
+
+            <div style="font-size:10px;font-weight:600;letter-spacing:0.2em;margin-top:4px;">
               SPATIAL ATELIER
             </div>
           </div>
 
           <div style="padding:32px;">
 
-            <p style="font-size:11px; font-weight:700; letter-spacing:0.15em; color:#910B0A; margin:0 0 8px;">
+            <p style="font-size:11px;font-weight:700;letter-spacing:0.15em;color:#910B0A;margin:0 0 8px;">
               NEW CONSULTATION REQUEST
             </p>
 
-            <h1 style="font-size:26px; margin:0 0 24px; color:#111111;">
+            <h1 style="font-size:26px;margin:0 0 24px;color:#111111;">
               ${escapeHtml(fullName)}
             </h1>
 
-            <p style="font-size:14px; line-height:1.7; color:#555555;">
+            <p style="font-size:14px;line-height:1.7;color:#555555;">
               A new free consultation request has been submitted through the KBX Spatial Atelier website.
               The consultation details are included below and the complete PDF summary is attached.
             </p>
 
-            <div style="margin-top:28px; border:1px solid #e5e5e5;">
+            <div style="margin-top:28px;border:1px solid #e5e5e5;">
 
-              <div style="padding:18px 20px; border-bottom:1px solid #e5e5e5;">
-                <div style="font-size:10px; font-weight:700; letter-spacing:0.1em; color:#888888;">
+              <div style="padding:18px 20px;border-bottom:1px solid #e5e5e5;">
+                <div style="font-size:10px;font-weight:700;letter-spacing:0.1em;color:#888888;">
                   CONSULTATION METHOD
                 </div>
-                <div style="margin-top:6px; font-size:14px; color:#111111;">
+
+                <div style="margin-top:6px;font-size:14px;color:#111111;">
                   ${escapeHtml(consultationMethod)}
                 </div>
               </div>
 
-              <div style="padding:18px 20px; border-bottom:1px solid #e5e5e5;">
-                <div style="font-size:10px; font-weight:700; letter-spacing:0.1em; color:#888888;">
+              <div style="padding:18px 20px;border-bottom:1px solid #e5e5e5;">
+                <div style="font-size:10px;font-weight:700;letter-spacing:0.1em;color:#888888;">
                   PREFERRED DATE
                 </div>
-                <div style="margin-top:6px; font-size:14px; color:#111111;">
-                  ${escapeHtml(formattedDate(preferredDate))}
+
+                <div style="margin-top:6px;font-size:14px;color:#111111;">
+                  ${escapeHtml(
+                    formattedDate(preferredDate)
+                  )}
                 </div>
               </div>
 
-              <div style="padding:18px 20px; border-bottom:1px solid #e5e5e5;">
-                <div style="font-size:10px; font-weight:700; letter-spacing:0.1em; color:#888888;">
+              <div style="padding:18px 20px;border-bottom:1px solid #e5e5e5;">
+                <div style="font-size:10px;font-weight:700;letter-spacing:0.1em;color:#888888;">
                   PREFERRED TIME
                 </div>
-                <div style="margin-top:6px; font-size:14px; color:#111111;">
+
+                <div style="margin-top:6px;font-size:14px;color:#111111;">
                   ${escapeHtml(preferredTime)}
                 </div>
               </div>
 
               <div style="padding:18px 20px;">
-                <div style="font-size:10px; font-weight:700; letter-spacing:0.1em; color:#888888;">
+                <div style="font-size:10px;font-weight:700;letter-spacing:0.1em;color:#888888;">
                   CONTACT
                 </div>
-                <div style="margin-top:6px; font-size:14px; color:#111111;">
+
+                <div style="margin-top:6px;font-size:14px;color:#111111;">
                   ${escapeHtml(phone)}
                 </div>
-                <div style="margin-top:4px; font-size:14px; color:#111111;">
+
+                <div style="margin-top:4px;font-size:14px;color:#111111;">
                   ${escapeHtml(email)}
                 </div>
               </div>
@@ -695,24 +704,28 @@ export async function POST(request: Request) {
               message
                 ? `
                   <div style="margin-top:28px;">
-                    <div style="font-size:10px; font-weight:700; letter-spacing:0.1em; color:#888888;">
+
+                    <div style="font-size:10px;font-weight:700;letter-spacing:0.1em;color:#888888;">
                       CLIENT MESSAGE
                     </div>
 
-                    <div style="margin-top:8px; padding:18px; background:#f7f7f5; font-size:14px; line-height:1.7; color:#444444;">
+                    <div style="margin-top:8px;padding:18px;background:#f7f7f5;font-size:14px;line-height:1.7;color:#444444;">
                       ${escapeHtml(message)}
                     </div>
+
                   </div>
                 `
                 : ""
             }
 
-            <div style="margin-top:30px; padding:18px; background:#f7f7f5; font-size:12px; line-height:1.6; color:#666666;">
-              <strong style="color:#910B0A;">Action required:</strong>
+            <div style="margin-top:30px;padding:18px;background:#f7f7f5;font-size:12px;line-height:1.6;color:#666666;">
+              <strong style="color:#910B0A;">
+                Action required:
+              </strong>
               Contact the client to review and confirm the requested consultation date, time and arrangements.
             </div>
 
-            <p style="margin-top:32px; font-size:12px; line-height:1.6; color:#888888;">
+            <p style="margin-top:32px;font-size:12px;line-height:1.6;color:#888888;">
               This email was generated automatically by the KBX Spatial Atelier consultation portal.
             </p>
 
@@ -721,20 +734,22 @@ export async function POST(request: Request) {
       </div>
     `;
 
-    const { data, error } = await resend.emails.send({
-      from: fromEmail,
-      to: [recipientEmail],
-      subject: emailSubject,
-      html: emailHtml,
-      attachments: [
-        {
-          filename: `KBX-Consultation-${sanitizeFileName(
-            fullName
-          )}.pdf`,
-          content: pdfBase64,
-        },
-      ],
-    });
+    const { data, error } =
+      await resend.emails.send({
+        from: fromEmail,
+        to: [recipientEmail],
+        subject: emailSubject,
+        html: emailHtml,
+        attachments: [
+          {
+            filename:
+              `KBX-Consultation-${sanitizeFileName(
+                fullName
+              )}.pdf`,
+            content: pdfBase64,
+          },
+        ],
+      });
 
     if (error) {
       console.error(
@@ -756,10 +771,6 @@ export async function POST(request: Request) {
       "Consultation email sent successfully:",
       data?.id
     );
-
-    /* -------------------------------------------------------
-       SUCCESS
-    ------------------------------------------------------- */
 
     return NextResponse.json({
       success: true,
