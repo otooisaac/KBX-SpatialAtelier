@@ -966,9 +966,13 @@ export default function Home() {
 
             </div>
 
-            <p className="mt-4 text-center text-[9px] text-black/25">
+            <Link
+              href="/admin/project-management"
+              aria-label="Website developer"
+              className="mt-4 block text-center text-[9px] text-black/25 transition hover:text-black/40"
+            >
               Website developed by Isaac Otoo, CEO of KBX Spatial Atelier.
-            </p>
+            </Link>
 
           </div>
 
