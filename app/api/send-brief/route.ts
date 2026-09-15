@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
+import PDFDocument from "pdfkit";
 
 export const runtime = "nodejs";
 
@@ -58,6 +59,14 @@ const PROJECT_STAGES = [
   },
 ];
 
+const CLIENT_BRIEF_TYPES = [
+  "kitchen_brief",
+  "wardrobe_brief",
+  "tv_unit_brief",
+  "full_interior_brief",
+  "client_brief",
+];
+
 function getSupabaseAdmin() {
   if (!SUPABASE_URL) {
     throw new Error(
@@ -83,106 +92,1158 @@ function getSupabaseAdmin() {
   );
 }
 
-export async function POST(request: NextRequest) {
-  let uploadedStoragePath: string | null = null;
+function cleanText(value: unknown): string {
+  if (value === null || value === undefined) {
+    return "";
+  }
 
-  try {
-    const formData = await request.formData();
+  if (typeof value === "string") {
+    return value.trim();
+  }
 
-    const file = formData.get("file");
+  if (
+    typeof value === "number" ||
+    typeof value === "boolean"
+  ) {
+    return String(value);
+  }
 
-    const clientId =
-      String(
-        formData.get("clientId") || ""
-      ).trim();
+  return "";
+}
 
-    const clientName =
-      String(
-        formData.get("clientName") || ""
-      ).trim();
+function normalizeDocumentType(
+  value: unknown
+): string {
+  const raw = cleanText(value);
 
-    const clientEmail =
-      String(
-        formData.get("clientEmail") || ""
-      ).trim();
+  if (!raw) {
+    return "client_brief";
+  }
 
-    const projectName =
-      String(
-        formData.get("projectName") || ""
-      ).trim();
+  const normalized = raw
+    .toLowerCase()
+    .replace(/\s+/g, "_")
+    .replace(/-/g, "_");
 
-    const stageNumberValue =
-      String(
-        formData.get("stageNumber") || ""
-      ).trim();
+  if (
+    normalized === "kitchen" ||
+    normalized === "kitchen_brief"
+  ) {
+    return "kitchen_brief";
+  }
 
-    const documentName =
-      String(
-        formData.get("documentName") || ""
-      ).trim();
+  if (
+    normalized === "wardrobe" ||
+    normalized === "wardrobe_brief"
+  ) {
+    return "wardrobe_brief";
+  }
 
-    const documentType =
-      String(
-        formData.get("documentType") || ""
-      ).trim();
+  if (
+    normalized === "tv" ||
+    normalized === "tv_unit" ||
+    normalized === "tv_unit_brief"
+  ) {
+    return "tv_unit_brief";
+  }
 
-    if (!(file instanceof File)) {
-      return NextResponse.json(
+  if (
+    normalized === "full_interior" ||
+    normalized === "full_interior_brief"
+  ) {
+    return "full_interior_brief";
+  }
+
+  if (normalized === "client_brief") {
+    return "client_brief";
+  }
+
+  return normalized;
+}
+
+function getValue(
+  source: Record<string, any>,
+  paths: string[]
+): unknown {
+  for (const path of paths) {
+    const parts = path.split(".");
+    let current: any = source;
+
+    for (const part of parts) {
+      if (
+        current &&
+        typeof current === "object" &&
+        part in current
+      ) {
+        current = current[part];
+      } else {
+        current = undefined;
+        break;
+      }
+    }
+
+    if (
+      current !== undefined &&
+      current !== null &&
+      current !== ""
+    ) {
+      return current;
+    }
+  }
+
+  return undefined;
+}
+
+function getClientId(
+  data: Record<string, any>
+): string {
+  const value = getValue(data, [
+    "clientId",
+    "client_id",
+    "client.id",
+    "client.clientId",
+    "client.client_id",
+    "customerId",
+    "customer_id",
+  ]);
+
+  return cleanText(value);
+}
+
+function getClientName(
+  data: Record<string, any>
+): string {
+  const value = getValue(data, [
+    "clientName",
+    "client_name",
+    "client.name",
+    "client.fullName",
+    "client.full_name",
+    "name",
+    "fullName",
+    "full_name",
+  ]);
+
+  return cleanText(value);
+}
+
+function getClientEmail(
+  data: Record<string, any>
+): string {
+  const value = getValue(data, [
+    "clientEmail",
+    "client_email",
+    "client.email",
+    "email",
+  ]);
+
+  return cleanText(value);
+}
+
+function getProjectName(
+  data: Record<string, any>
+): string {
+  const value = getValue(data, [
+    "projectName",
+    "project_name",
+    "project.name",
+    "project",
+    "nameOfProject",
+  ]);
+
+  return (
+    cleanText(value) ||
+    "KBX Spatial Atelier Project"
+  );
+}
+
+function getProjectLocation(
+  data: Record<string, any>
+): string {
+  const value = getValue(data, [
+    "projectLocation",
+    "project_location",
+    "location",
+    "project.location",
+    "siteLocation",
+    "site_location",
+  ]);
+
+  return cleanText(value);
+}
+
+function getDocumentType(
+  data: Record<string, any>
+): string {
+  const value = getValue(data, [
+    "documentType",
+    "document_type",
+    "briefType",
+    "brief_type",
+    "type",
+  ]);
+
+  return normalizeDocumentType(value);
+}
+
+function getDocumentName(
+  data: Record<string, any>,
+  documentType: string
+): string {
+  const supplied = cleanText(
+    getValue(data, [
+      "documentName",
+      "document_name",
+      "title",
+      "briefTitle",
+      "brief_title",
+    ])
+  );
+
+  if (supplied) {
+    return supplied;
+  }
+
+  switch (documentType) {
+    case "kitchen_brief":
+      return "Kitchen Brief";
+
+    case "wardrobe_brief":
+      return "Wardrobe & Closet Brief";
+
+    case "tv_unit_brief":
+      return "TV Unit Brief";
+
+    case "full_interior_brief":
+      return "Full Interior Brief";
+
+    default:
+      return "Client Brief";
+  }
+}
+
+function formatValue(value: unknown): string {
+  if (value === null || value === undefined) {
+    return "";
+  }
+
+  if (typeof value === "string") {
+    return value.trim();
+  }
+
+  if (
+    typeof value === "number" ||
+    typeof value === "boolean"
+  ) {
+    return String(value);
+  }
+
+  if (Array.isArray(value)) {
+    return value
+      .map((item) => formatValue(item))
+      .filter(Boolean)
+      .join(", ");
+  }
+
+  if (typeof value === "object") {
+    return Object.entries(
+      value as Record<string, unknown>
+    )
+      .map(([key, val]) => {
+        const formatted = formatValue(val);
+
+        if (!formatted) {
+          return "";
+        }
+
+        return `${key}: ${formatted}`;
+      })
+      .filter(Boolean)
+      .join("; ");
+  }
+
+  return String(value);
+}
+
+function flattenObject(
+  value: any,
+  prefix = "",
+  output: Array<{
+    key: string;
+    value: string;
+  }> = []
+) {
+  if (
+    value === null ||
+    value === undefined
+  ) {
+    return output;
+  }
+
+  if (
+    typeof value !== "object" ||
+    value instanceof Date
+  ) {
+    const formatted = formatValue(value);
+
+    if (formatted) {
+      output.push({
+        key: prefix || "Value",
+        value: formatted,
+      });
+    }
+
+    return output;
+  }
+
+  if (Array.isArray(value)) {
+    const formatted = formatValue(value);
+
+    if (formatted) {
+      output.push({
+        key: prefix || "Value",
+        value: formatted,
+      });
+    }
+
+    return output;
+  }
+
+  for (const [key, child] of Object.entries(value)) {
+    if (
+      key === "file" ||
+      key === "files" ||
+      key === "File"
+    ) {
+      continue;
+    }
+
+    const nextKey = prefix
+      ? `${prefix} / ${key}`
+      : key;
+
+    if (
+      child &&
+      typeof child === "object" &&
+      !Array.isArray(child)
+    ) {
+      flattenObject(
+        child,
+        nextKey,
+        output
+      );
+    } else {
+      const formatted =
+        formatValue(child);
+
+      if (formatted) {
+        output.push({
+          key: nextKey,
+          value: formatted,
+        });
+      }
+    }
+  }
+
+  return output;
+}
+
+function prettyLabel(
+  value: string
+): string {
+  return value
+    .replace(/\//g, " / ")
+    .replace(/[_-]+/g, " ")
+    .replace(
+      /\b\w/g,
+      (letter) => letter.toUpperCase()
+    );
+}
+
+async function generateBriefPdf(
+  data: Record<string, any>,
+  documentName: string,
+  clientName: string,
+  clientEmail: string,
+  projectName: string,
+  projectLocation: string
+): Promise<Buffer> {
+  return new Promise(
+    (resolve, reject) => {
+      try {
+        const doc =
+          new PDFDocument({
+            size: "A4",
+            margin: 50,
+          });
+
+        const chunks: Buffer[] = [];
+
+        doc.on(
+          "data",
+          (chunk: Buffer) => {
+            chunks.push(chunk);
+          }
+        );
+
+        doc.on(
+          "end",
+          () => {
+            resolve(
+              Buffer.concat(chunks)
+            );
+          }
+        );
+
+        doc.on(
+          "error",
+          (error) => {
+            reject(error);
+          }
+        );
+
+        doc
+          .fontSize(20)
+          .text(
+            "KBX Spatial Atelier",
+            {
+              align: "center",
+            }
+          );
+
+        doc.moveDown(0.5);
+
+        doc
+          .fontSize(16)
+          .text(
+            documentName,
+            {
+              align: "center",
+            }
+          );
+
+        doc.moveDown(1);
+
+        doc
+          .fontSize(10)
+          .text(
+            `Prepared for: ${
+              clientName || "Client"
+            }`
+          );
+
+        if (clientEmail) {
+          doc.text(
+            `Email: ${clientEmail}`
+          );
+        }
+
+        doc.text(
+          `Project: ${projectName}`
+        );
+
+        if (projectLocation) {
+          doc.text(
+            `Location: ${projectLocation}`
+          );
+        }
+
+        doc.moveDown(1);
+
+        doc
+          .fontSize(12)
+          .text("Submitted Brief", {
+            underline: true,
+          });
+
+        doc.moveDown(0.5);
+
+        const entries =
+          flattenObject(data);
+
+        for (const entry of entries) {
+          if (
+            !entry.value ||
+            entry.key === "file" ||
+            entry.key === "files"
+          ) {
+            continue;
+          }
+
+          if (
+            doc.y >
+            doc.page.height - 80
+          ) {
+            doc.addPage();
+          }
+
+          doc
+            .fontSize(10)
+            .text(
+              prettyLabel(
+                entry.key
+              ),
+              {
+                continued: false,
+              }
+            );
+
+          doc
+            .fontSize(10)
+            .text(
+              entry.value
+            );
+
+          doc.moveDown(0.35);
+        }
+
+        doc.moveDown(1);
+
+        doc
+          .fontSize(8)
+          .text(
+            `Generated by KBX Spatial Atelier on ${new Date().toLocaleString(
+              "en-GB"
+            )}`,
+            {
+              align: "center",
+            }
+          );
+
+        doc.end();
+      } catch (error) {
+        reject(error);
+      }
+    }
+  );
+}
+
+async function parseRequestBody(
+  request: NextRequest
+): Promise<{
+  data: Record<string, any>;
+  file: File | null;
+}> {
+  const contentType =
+    request.headers.get(
+      "content-type"
+    ) || "";
+
+  /*
+   * JSON submission.
+   */
+  if (
+    contentType
+      .toLowerCase()
+      .includes("application/json")
+  ) {
+    const text =
+      await request.text();
+
+    if (!text.trim()) {
+      return {
+        data: {},
+        file: null,
+      };
+    }
+
+    const parsed =
+      JSON.parse(text);
+
+    if (
+      parsed &&
+      typeof parsed === "object" &&
+      !Array.isArray(parsed)
+    ) {
+      return {
+        data: parsed,
+        file: null,
+      };
+    }
+
+    return {
+      data: {
+        value: parsed,
+      },
+      file: null,
+    };
+  }
+
+  /*
+   * FormData submission.
+   */
+  const formData =
+    await request.formData();
+
+  const fileValue =
+    formData.get("file");
+
+  const file =
+    fileValue instanceof File &&
+    fileValue.size > 0
+      ? fileValue
+      : null;
+
+  const data: Record<
+    string,
+    any
+  > = {};
+
+  /*
+   * First look for a JSON payload
+   * inside FormData.
+   */
+  const possibleJsonFields = [
+    "briefData",
+    "brief",
+    "data",
+    "payload",
+    "formData",
+    "clientBrief",
+    "client_brief",
+  ];
+
+  for (const fieldName of possibleJsonFields) {
+    const value =
+      formData.get(fieldName);
+
+    if (
+      typeof value === "string" &&
+      value.trim()
+    ) {
+      try {
+        const parsed =
+          JSON.parse(value);
+
+        if (
+          parsed &&
+          typeof parsed === "object"
+        ) {
+          Object.assign(
+            data,
+            parsed
+          );
+
+          break;
+        }
+      } catch {
+        /*
+         * Not JSON. Continue checking
+         * other possible fields.
+         */
+      }
+    }
+  }
+
+  /*
+   * Read the ordinary FormData
+   * fields as well.
+   *
+   * Array.from() is deliberately used
+   * instead of directly iterating
+   * formData.entries(), so this works
+   * with the project's current TS target.
+   */
+  const entries =
+    Array.from(
+      formData.entries()
+    );
+
+  for (
+    let index = 0;
+    index < entries.length;
+    index++
+  ) {
+    const key =
+      entries[index][0];
+
+    const value =
+      entries[index][1];
+
+    if (key === "file") {
+      continue;
+    }
+
+    if (
+      possibleJsonFields.includes(
+        key
+      )
+    ) {
+      continue;
+    }
+
+    if (
+      typeof value === "string"
+    ) {
+      /*
+       * If the value itself happens
+       * to be JSON, preserve the
+       * parsed object.
+       */
+      try {
+        const parsed =
+          JSON.parse(value);
+
+        if (
+          parsed &&
+          typeof parsed === "object"
+        ) {
+          data[key] = parsed;
+          continue;
+        }
+      } catch {
+        /*
+         * Normal string field.
+         */
+      }
+
+      data[key] = value;
+    }
+  }
+
+  return {
+    data,
+    file,
+  };
+}
+
+async function uploadFile(
+  supabase: ReturnType<
+    typeof getSupabaseAdmin
+  >,
+  file: File,
+  clientId: string,
+  stageKey: string
+) {
+  const safeFileName =
+    file.name
+      .replace(
+        /[^a-zA-Z0-9._-]/g,
+        "_"
+      )
+      .replace(
+        /_+/g,
+        "_"
+      );
+
+  const storagePath =
+    `${clientId}/stages/${stageKey}/${Date.now()}-${safeFileName}`;
+
+  const buffer =
+    Buffer.from(
+      await file.arrayBuffer()
+    );
+
+  const {
+    error,
+  } =
+    await supabase.storage
+      .from(STORAGE_BUCKET)
+      .upload(
+        storagePath,
+        buffer,
         {
-          success: false,
-          error: "A file is required.",
-        },
-        { status: 400 }
+          contentType:
+            file.type ||
+            "application/octet-stream",
+          upsert: false,
+        }
+      );
+
+  if (error) {
+    throw new Error(
+      `Failed to upload document: ${error.message}`
+    );
+  }
+
+  return {
+    storagePath,
+    fileSize: file.size,
+    fileName: file.name,
+    mimeType:
+      file.type ||
+      "application/octet-stream",
+  };
+}
+
+async function ensureStages(
+  supabase: ReturnType<
+    typeof getSupabaseAdmin
+  >,
+  clientId: string
+) {
+  const {
+    data: existingStages,
+    error,
+  } =
+    await supabase
+      .from("project_stages")
+      .select("*")
+      .eq(
+        "client_id",
+        clientId
+      )
+      .order(
+        "stage_number",
+        {
+          ascending: true,
+        }
+      );
+
+  if (error) {
+    throw new Error(
+      `Failed to load project stages: ${error.message}`
+    );
+  }
+
+  if (
+    !existingStages ||
+    existingStages.length === 0
+  ) {
+    const initialStages =
+      PROJECT_STAGES.map(
+        (stage) => ({
+          client_id:
+            clientId,
+          stage_number:
+            stage.number,
+          stage_key:
+            stage.key,
+          stage_name:
+            stage.name,
+          status:
+            stage.number === 1
+              ? "completed"
+              : stage.number === 2
+              ? "current"
+              : "upcoming",
+          completed_at:
+            stage.number === 1
+              ? new Date().toISOString()
+              : null,
+        })
+      );
+
+    const {
+      error:
+        insertError,
+    } =
+      await supabase
+        .from(
+          "project_stages"
+        )
+        .insert(
+          initialStages
+        );
+
+    if (insertError) {
+      throw new Error(
+        `Failed to initialize project stages: ${insertError.message}`
       );
     }
+
+    return initialStages;
+  }
+
+  return existingStages;
+}
+
+async function createDocumentRecord(
+  supabase: ReturnType<
+    typeof getSupabaseAdmin
+  >,
+  values: {
+    clientId: string;
+    clientName: string;
+    clientEmail: string;
+    projectName: string;
+    documentName: string;
+    documentType: string;
+    storagePath: string;
+    mimeType: string;
+    fileSize: number;
+    fileName: string;
+  }
+) {
+  const {
+    data,
+    error,
+  } =
+    await supabase
+      .from(
+        "client_documents"
+      )
+      .insert({
+        client_id:
+          values.clientId,
+
+        client_name:
+          values.clientName ||
+          null,
+
+        client_email:
+          values.clientEmail ||
+          null,
+
+        project_name:
+          values.projectName ||
+          "KBX Spatial Atelier Project",
+
+        document_name:
+          values.documentName,
+
+        document_type:
+          values.documentType,
+
+        storage_path:
+          values.storagePath,
+
+        file_path:
+          values.storagePath,
+
+        mime_type:
+          values.mimeType,
+
+        file_size:
+          values.fileSize,
+
+        file_name:
+          values.fileName,
+
+        title:
+          values.documentName,
+      })
+      .select()
+      .single();
+
+  if (error) {
+    throw new Error(
+      `Document could not be saved: ${error.message}`
+    );
+  }
+
+  return data;
+}
+
+export async function POST(
+  request: NextRequest
+) {
+  let uploadedStoragePath:
+    string | null = null;
+
+  try {
+    const {
+      data,
+      file,
+    } =
+      await parseRequestBody(
+        request
+      );
+
+    const clientId =
+      getClientId(data);
+
+    const clientName =
+      getClientName(data);
+
+    const clientEmail =
+      getClientEmail(data);
+
+    const projectName =
+      getProjectName(data);
+
+    const projectLocation =
+      getProjectLocation(data);
+
+    const documentType =
+      getDocumentType(data);
+
+    const documentName =
+      getDocumentName(
+        data,
+        documentType
+      );
+
+    console.log(
+      "KBX send-brief:",
+      {
+        hasFile: Boolean(file),
+        clientId,
+        clientName,
+        clientEmail,
+        projectName,
+        documentType,
+      }
+    );
 
     if (!clientId) {
       return NextResponse.json(
         {
           success: false,
-          error: "clientId is required.",
+          error:
+            "clientId is required. Please reopen the client portal and submit the brief again.",
         },
-        { status: 400 }
+        {
+          status: 400,
+        }
       );
     }
 
-    if (!stageNumberValue) {
+    const supabase =
+      getSupabaseAdmin();
+
+    /*
+     * ============================================================
+     * CLIENT BRIEF SUBMISSION
+     * ============================================================
+     *
+     * A Client Brief does NOT require
+     * the client to upload a file.
+     *
+     * We generate the PDF on the server
+     * and save it as the client document.
+     */
+    if (
+      CLIENT_BRIEF_TYPES.includes(
+        documentType
+      ) &&
+      !file
+    ) {
+      const pdfBuffer =
+        await generateBriefPdf(
+          data,
+          documentName,
+          clientName,
+          clientEmail,
+          projectName,
+          projectLocation
+        );
+
+      const safeName =
+        documentName
+          .replace(
+            /[^a-zA-Z0-9._-]/g,
+            "_"
+          )
+          .replace(
+            /_+/g,
+            "_"
+          );
+
+      const storagePath =
+        `${clientId}/briefs/${Date.now()}-${safeName}.pdf`;
+
+      uploadedStoragePath =
+        storagePath;
+
+      const {
+        error:
+          uploadError,
+      } =
+        await supabase.storage
+          .from(
+            STORAGE_BUCKET
+          )
+          .upload(
+            storagePath,
+            pdfBuffer,
+            {
+              contentType:
+                "application/pdf",
+              upsert: false,
+            }
+          );
+
+      if (uploadError) {
+        throw new Error(
+          `Failed to save the submitted brief: ${uploadError.message}`
+        );
+      }
+
+      const document =
+        await createDocumentRecord(
+          supabase,
+          {
+            clientId,
+            clientName,
+            clientEmail,
+            projectName,
+            documentName,
+            documentType,
+            storagePath,
+            mimeType:
+              "application/pdf",
+            fileSize:
+              pdfBuffer.length,
+            fileName:
+              `${safeName}.pdf`,
+          }
+        );
+
+      /*
+       * IMPORTANT:
+       *
+       * We intentionally DO NOT complete
+       * Client Brief here.
+       *
+       * The Admin approval workflow will
+       * handle that later.
+       */
       return NextResponse.json(
         {
-          success: false,
-          error: "stageNumber is required.",
+          success: true,
+          message:
+            `${documentName} submitted successfully.`,
+          document,
+          submittedBrief: true,
+          requiresAdminApproval: true,
         },
-        { status: 400 }
+        {
+          status: 200,
+        }
       );
     }
 
-    if (!documentName) {
+    /*
+     * ============================================================
+     * ADMIN / STAGE DOCUMENT UPLOAD
+     * ============================================================
+     *
+     * If a physical file is supplied,
+     * retain the existing stage-upload
+     * functionality.
+     */
+    if (!file) {
       return NextResponse.json(
         {
           success: false,
-          error: "documentName is required.",
+          error:
+            "A file is required for this type of document upload.",
         },
-        { status: 400 }
+        {
+          status: 400,
+        }
       );
     }
 
-    if (!documentType) {
-      return NextResponse.json(
-        {
-          success: false,
-          error: "documentType is required.",
-        },
-        { status: 400 }
+    const stageNumberRaw =
+      cleanText(
+        getValue(data, [
+          "stageNumber",
+          "stage_number",
+        ])
       );
-    }
 
     const stageNumber =
-      Number(stageNumberValue);
+      Number(stageNumberRaw);
 
     if (
-      !Number.isInteger(stageNumber) ||
+      !Number.isInteger(
+        stageNumber
+      ) ||
       stageNumber < 1 ||
-      stageNumber > PROJECT_STAGES.length
+      stageNumber >
+        PROJECT_STAGES.length
     ) {
       return NextResponse.json(
         {
@@ -190,14 +1251,17 @@ export async function POST(request: NextRequest) {
           error:
             "Invalid project stage.",
         },
-        { status: 400 }
+        {
+          status: 400,
+        }
       );
     }
 
     const selectedStage =
       PROJECT_STAGES.find(
         (stage) =>
-          stage.number === stageNumber
+          stage.number ===
+          stageNumber
       );
 
     if (!selectedStage) {
@@ -207,143 +1271,29 @@ export async function POST(request: NextRequest) {
           error:
             "Project stage could not be found.",
         },
-        { status: 400 }
-      );
-    }
-
-    const supabase =
-      getSupabaseAdmin();
-
-    /*
-     * Make sure the stage exists for this client.
-     *
-     * If it does not exist yet, create all nine stages
-     * with the correct initial status.
-     */
-    const { data: existingStages, error: stagesError } =
-      await supabase
-        .from("project_stages")
-        .select("*")
-        .eq("client_id", clientId)
-        .order("stage_number", {
-          ascending: true,
-        });
-
-    if (stagesError) {
-      console.error(
-        "Project stages lookup failed:",
-        stagesError
-      );
-
-      return NextResponse.json(
         {
-          success: false,
-          error:
-            "Failed to load project stages.",
-          details:
-            stagesError.message,
-        },
-        { status: 500 }
+          status: 400,
+        }
       );
     }
 
-    if (
-      !existingStages ||
-      existingStages.length === 0
-    ) {
-      const initialStages =
-        PROJECT_STAGES.map(
-          (stage) => ({
-            client_id: clientId,
-            stage_number:
-              stage.number,
-            stage_key:
-              stage.key,
-            stage_name:
-              stage.name,
-            status:
-              stage.number === 1
-                ? "completed"
-                : stage.number === 2
-                ? "current"
-                : "upcoming",
-            completed_at:
-              stage.number === 1
-                ? new Date().toISOString()
-                : null,
-          })
-        );
-
-      const {
-        error: createStagesError,
-      } = await supabase
-        .from("project_stages")
-        .insert(initialStages);
-
-      if (createStagesError) {
-        console.error(
-          "Project stages creation failed:",
-          createStagesError
-        );
-
-        return NextResponse.json(
-          {
-            success: false,
-            error:
-              "Failed to initialize project stages.",
-            details:
-              createStagesError.message,
-          },
-          { status: 500 }
-        );
-      }
-    }
-
-    /*
-     * Re-read the stages after initialization.
-     */
-    const {
-      data: stages,
-      error: reloadStagesError,
-    } = await supabase
-      .from("project_stages")
-      .select("*")
-      .eq("client_id", clientId)
-      .order("stage_number", {
-        ascending: true,
-      });
-
-    if (reloadStagesError) {
-      console.error(
-        "Project stages reload failed:",
-        reloadStagesError
+    const stages =
+      await ensureStages(
+        supabase,
+        clientId
       );
-
-      return NextResponse.json(
-        {
-          success: false,
-          error:
-            "Failed to reload project stages.",
-          details:
-            reloadStagesError.message,
-        },
-        { status: 500 }
-      );
-    }
 
     const currentStage =
-      stages?.find(
-        (stage) =>
-          stage.status === "current"
+      stages.find(
+        (stage: any) =>
+          stage.status ===
+          "current"
       );
 
     /*
-     * Prevent accidentally completing a future stage
-     * while an earlier stage is still current.
-     *
-     * The exception is stage 1, because consultation
-     * is already treated as completed when the project
-     * stage system is initialized.
+     * Prevent completing a future
+     * stage while an earlier stage
+     * is still current.
      */
     if (
       stageNumber !== 1 &&
@@ -357,185 +1307,78 @@ export async function POST(request: NextRequest) {
           error:
             `You must complete "${currentStage.stage_name}" before completing "${selectedStage.name}".`,
         },
-        { status: 400 }
+        {
+          status: 400,
+        }
       );
     }
 
-    /*
-     * Create a unique storage path.
-     */
-    const safeFileName =
-      file.name
-        .replace(
-          /[^a-zA-Z0-9._-]/g,
-          "_"
-        )
-        .replace(
-          /_+/g,
-          "_"
-        );
-
-    const storagePath =
-      `${clientId}/stages/${selectedStage.key}/${Date.now()}-${safeFileName}`;
-
-    uploadedStoragePath =
-      storagePath;
-
-    const fileBuffer =
-      Buffer.from(
-        await file.arrayBuffer()
+    const uploaded =
+      await uploadFile(
+        supabase,
+        file,
+        clientId,
+        selectedStage.key
       );
 
-    /*
-     * Upload the physical file to
-     * Supabase Storage.
-     */
-    const {
-      error: uploadError,
-    } = await supabase.storage
-      .from(STORAGE_BUCKET)
-      .upload(
-        storagePath,
-        fileBuffer,
+    uploadedStoragePath =
+      uploaded.storagePath;
+
+    const document =
+      await createDocumentRecord(
+        supabase,
         {
-          contentType:
-            file.type ||
-            "application/pdf",
-          upsert: false,
+          clientId,
+          clientName,
+          clientEmail,
+          projectName,
+          documentName:
+            documentName ||
+            file.name,
+          documentType:
+            documentType ||
+            selectedStage.key,
+          storagePath:
+            uploaded.storagePath,
+          mimeType:
+            uploaded.mimeType,
+          fileSize:
+            uploaded.fileSize,
+          fileName:
+            uploaded.fileName,
         }
       );
 
-    if (uploadError) {
-      console.error(
-        "Document upload failed:",
-        uploadError
-      );
-
-      return NextResponse.json(
-        {
-          success: false,
-          error:
-            "Failed to upload document.",
-          details:
-            uploadError.message,
-        },
-        { status: 500 }
-      );
-    }
-
-    /*
-     * Create the document record.
-     */
     const {
-      data: document,
-      error: documentError,
-    } = await supabase
-      .from("client_documents")
-      .insert({
-        client_id: clientId,
-
-        client_name:
-          clientName || null,
-
-        client_email:
-          clientEmail || null,
-
-        project_name:
-          projectName ||
-          "KBX Spatial Atelier Project",
-
-        document_name:
-          documentName,
-
-        document_type:
-          documentType,
-
-        storage_path:
-          storagePath,
-
-        file_path:
-          storagePath,
-
-        mime_type:
-          file.type ||
-          "application/pdf",
-
-        file_size:
-          file.size,
-
-        file_name:
-          file.name,
-
-        title:
-          documentName,
-      })
-      .select()
-      .single();
-
-    if (documentError) {
-      console.error(
-        "Document database insert failed:",
-        documentError
-      );
-
-      await supabase.storage
-        .from(STORAGE_BUCKET)
-        .remove([
-          storagePath,
-        ]);
-
-      uploadedStoragePath =
-        null;
-
-      return NextResponse.json(
-        {
-          success: false,
-          error:
-            "Document was uploaded but could not be saved.",
-          details:
-            documentError.message,
-        },
-        { status: 500 }
-      );
-    }
-
-    /*
-     * Mark the selected stage as completed.
-     */
-    const {
-      error: completeStageError,
-    } = await supabase
-      .from("project_stages")
-      .update({
-        status:
-          "completed",
-        document_id:
-          document.id,
-        completed_at:
-          new Date().toISOString(),
-      })
-      .eq(
-        "client_id",
-        clientId
-      )
-      .eq(
-        "stage_number",
-        stageNumber
-      );
+      error:
+        completeStageError,
+    } =
+      await supabase
+        .from(
+          "project_stages"
+        )
+        .update({
+          status:
+            "completed",
+          document_id:
+            document.id,
+          completed_at:
+            new Date().toISOString(),
+        })
+        .eq(
+          "client_id",
+          clientId
+        )
+        .eq(
+          "stage_number",
+          stageNumber
+        );
 
     if (completeStageError) {
-      console.error(
-        "Stage completion failed:",
-        completeStageError
-      );
-
-      /*
-       * Remove the document record and
-       * uploaded file because the stage
-       * could not be completed correctly.
-       */
       await supabase
-        .from("client_documents")
+        .from(
+          "client_documents"
+        )
         .delete()
         .eq(
           "id",
@@ -543,26 +1386,21 @@ export async function POST(request: NextRequest) {
         );
 
       await supabase.storage
-        .from(STORAGE_BUCKET)
+        .from(
+          STORAGE_BUCKET
+        )
         .remove([
-          storagePath,
+          uploaded.storagePath,
         ]);
 
-      return NextResponse.json(
-        {
-          success: false,
-          error:
-            "The document was uploaded, but the project stage could not be completed.",
-          details:
-            completeStageError.message,
-        },
-        { status: 500 }
+      uploadedStoragePath =
+        null;
+
+      throw new Error(
+        `The document was uploaded, but the project stage could not be completed: ${completeStageError.message}`
       );
     }
 
-    /*
-     * Make the next stage current.
-     */
     const nextStage =
       PROJECT_STAGES.find(
         (stage) =>
@@ -572,77 +1410,73 @@ export async function POST(request: NextRequest) {
 
     if (nextStage) {
       const {
-        error: nextStageError,
-      } = await supabase
-        .from("project_stages")
-        .update({
-          status:
-            "current",
-        })
-        .eq(
-          "client_id",
-          clientId
-        )
-        .eq(
-          "stage_number",
-          nextStage.number
-        );
+        error:
+          nextStageError,
+      } =
+        await supabase
+          .from(
+            "project_stages"
+          )
+          .update({
+            status:
+              "current",
+          })
+          .eq(
+            "client_id",
+            clientId
+          )
+          .eq(
+            "stage_number",
+            nextStage.number
+          );
 
       if (nextStageError) {
         console.error(
           "Next stage update failed:",
           nextStageError
         );
-
-        return NextResponse.json(
-          {
-            success: false,
-            error:
-              "The stage was completed, but the next stage could not be activated.",
-            details:
-              nextStageError.message,
-          },
-          { status: 500 }
-        );
       }
     }
 
-    return NextResponse.json({
-      success: true,
-
-      message:
-        `${selectedStage.name} completed successfully.`,
-
-      document,
-
-      completedStage:
-        selectedStage,
-
-      nextStage:
-        nextStage || null,
-    });
+    return NextResponse.json(
+      {
+        success: true,
+        message:
+          `${selectedStage.name} completed successfully.`,
+        document,
+        completedStage:
+          selectedStage,
+        nextStage:
+          nextStage ||
+          null,
+      },
+      {
+        status: 200,
+      }
+    );
   } catch (error) {
     console.error(
-      "Unexpected upload document error:",
+      "send-brief error:",
       error
     );
 
-    /*
-     * If something unexpected happens after
-     * the file was uploaded, attempt to clean
-     * up the storage file.
-     */
-    if (uploadedStoragePath) {
+    if (
+      uploadedStoragePath
+    ) {
       try {
         const supabase =
           getSupabaseAdmin();
 
         await supabase.storage
-          .from(STORAGE_BUCKET)
+          .from(
+            STORAGE_BUCKET
+          )
           .remove([
             uploadedStoragePath,
           ]);
-      } catch (cleanupError) {
+      } catch (
+        cleanupError
+      ) {
         console.error(
           "Storage cleanup failed:",
           cleanupError
@@ -658,8 +1492,9 @@ export async function POST(request: NextRequest) {
             ? error.message
             : "Unexpected server error.",
       },
-      { status: 500 }
+      {
+        status: 500,
+      }
     );
   }
 }
-
