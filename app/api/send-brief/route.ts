@@ -348,7 +348,7 @@ function drawPageHeader(
     size: 7,
     font: bold,
     color: DARK_GRAY,
-    characterSpacing: 1.4,
+   
   });
 
   page.drawText("CLIENT DESIGN BRIEF", {
