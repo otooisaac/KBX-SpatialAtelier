@@ -1,1183 +1,985 @@
 "use client";
 
-import { ChangeEvent, FormEvent, useEffect, useMemo, useState } from "react";
+import Image from "next/image";
+import Link from "next/link";
 
 const RED = "#910B0A";
 
-type ClientAccount = {
-  id: string;
-  fullName?: string;
-  name?: string;
-  email?: string;
-  contact?: string;
-  phone?: string;
-  createdAt?: string;
-};
+const process = [
+  "Consultation",
+  "Client Brief",
+  "Site Survey",
+  "Concept",
+  "Spatial Planning",
+  "3D Development",
+  "Technical Documentation",
+  "Fabrication",
+  "Installation",
+];
 
-type ProjectStage = {
-  id: string;
-  client_id: string;
-  stage_number: number;
-  stage_key: string;
-  stage_name: string;
-  status: "upcoming" | "current" | "completed";
-  document_id: string | null;
-  completed_at: string | null;
-};
-
-const PROJECT_STAGES = [
+const services = [
   {
-    number: 1,
-    key: "consultation",
-    name: "Consultation",
+    number: "01",
+    title: "Full Interior Design",
+    image: "/service-full-interior.jpg",
   },
   {
-    number: 2,
-    key: "client_brief",
-    name: "Client Brief",
+    number: "02",
+    title: "Custom Kitchen Design & Installation",
+    image: "/service-kitchen.jpg",
   },
   {
-    number: 3,
-    key: "site_survey",
-    name: "Site Survey",
+    number: "03",
+    title: "Wardrobe & Walk-in Closet Design & Installation",
+    image: "/service-wardrobe.jpg",
   },
   {
-    number: 4,
-    key: "concept",
-    name: "Concept",
+    number: "04",
+    title: "TV Unit Design & Installation",
+    image: "/service-tv-unit.jpg",
   },
   {
-    number: 5,
-    key: "spatial_planning",
-    name: "Spatial Planning",
+    number: "05",
+    title: "Bespoke Joinery & Furniture",
+    image: "/service-joinery.jpg",
   },
   {
-    number: 6,
-    key: "3d_development",
-    name: "3D Development",
+    number: "06",
+    title: "Interior Architecture & Spatial Planning",
+    image: "/service-spatial-planning.jpg",
   },
   {
-    number: 7,
-    key: "technical_documentation",
-    name: "Technical Documentation",
+    number: "07",
+    title: "3D Visualization & Rendering",
+    image: "/service-3d-visualization.jpg",
   },
   {
-    number: 8,
-    key: "fabrication",
-    name: "Fabrication",
-  },
-  {
-    number: 9,
-    key: "installation",
-    name: "Installation",
+    number: "08",
+    title: "Commercial & Residential Interiors",
+    image: "/service-commercial.jpg",
   },
 ];
 
-function getClientName(client: ClientAccount) {
-  return (
-    client.fullName ||
-    client.name ||
-    "Unnamed Client"
-  );
-}
-
-function getClientEmail(client: ClientAccount) {
-  return client.email || "";
-}
-
-function getClientPhone(client: ClientAccount) {
-  return client.contact || client.phone || "";
-}
-
-export default function ProjectManagementPage() {
-  const [clients, setClients] =
-    useState<ClientAccount[]>([]);
-
-  const [selectedClientId, setSelectedClientId] =
-    useState("");
-
-  const [stages, setStages] =
-    useState<ProjectStage[]>([]);
-
-  const [selectedStageNumber, setSelectedStageNumber] =
-    useState("");
-
-  const [file, setFile] =
-    useState<File | null>(null);
-
-  const [documentName, setDocumentName] =
-    useState("");
-
-  const [documentType, setDocumentType] =
-    useState("approved_stage_document");
-
-  const [projectName, setProjectName] =
-    useState("");
-
-  const [loadingClients, setLoadingClients] =
-    useState(true);
-
-  const [loadingStages, setLoadingStages] =
-    useState(false);
-
-  const [uploading, setUploading] =
-    useState(false);
-
-  const [error, setError] =
-    useState("");
-
-  const [success, setSuccess] =
-    useState("");
-
-  /*
-   * Load the existing client accounts.
-   *
-   * This uses the same temporary compatibility
-   * localStorage account system currently used
-   * by the client portal.
-   */
-  useEffect(() => {
-    try {
-      const raw =
-        window.localStorage.getItem(
-          "kbxClientAccounts"
-        );
-
-      if (!raw) {
-        setClients([]);
-        return;
-      }
-
-      const parsed =
-        JSON.parse(raw);
-
-      if (Array.isArray(parsed)) {
-        setClients(parsed);
-      } else {
-        setClients([]);
-      }
-    } catch (error) {
-      console.error(
-        "Could not load client accounts:",
-        error
-      );
-
-      setClients([]);
-    } finally {
-      setLoadingClients(false);
-    }
-  }, []);
-
-  /*
-   * Load project stages whenever a client
-   * is selected.
-   */
-  useEffect(() => {
-    if (!selectedClientId) {
-      setStages([]);
-      return;
-    }
-
-    async function loadStages() {
-      setLoadingStages(true);
-      setError("");
-      setSuccess("");
-
-      try {
-        const response =
-          await fetch(
-            `/api/project-stages?clientId=${encodeURIComponent(
-              selectedClientId
-            )}`,
-            {
-              cache: "no-store",
-            }
-          );
-
-        const text =
-          await response.text();
-
-        let result: any = null;
-
-        try {
-          result =
-            text ? JSON.parse(text) : null;
-        } catch {
-          throw new Error(
-            "The project stages API returned an invalid response."
-          );
-        }
-
-        if (
-          !response.ok ||
-          !result?.success
-        ) {
-          throw new Error(
-            result?.error ||
-              "Failed to load project stages."
-          );
-        }
-
-        setStages(
-          Array.isArray(result.stages)
-            ? result.stages
-            : []
-        );
-      } catch (error) {
-        console.error(
-          "Project stages loading failed:",
-          error
-        );
-
-        setStages([]);
-
-        setError(
-          error instanceof Error
-            ? error.message
-            : "Failed to load project stages."
-        );
-      } finally {
-        setLoadingStages(false);
-      }
-    }
-
-    loadStages();
-  }, [selectedClientId]);
-
-  const selectedClient = useMemo(
-    () =>
-      clients.find(
-        (client) =>
-          client.id ===
-          selectedClientId
-      ) || null,
-    [clients, selectedClientId]
-  );
-
-  const selectedStage =
-    PROJECT_STAGES.find(
-      (stage) =>
-        String(stage.number) ===
-        selectedStageNumber
-    ) || null;
-
-  const selectedStageRecord =
-    stages.find(
-      (stage) =>
-        stage.stage_number ===
-        Number(selectedStageNumber)
-    ) || null;
-
-  /*
-   * The API initializes stages when necessary.
-   *
-   * This helper gives the UI a sensible fallback
-   * while the project stage records are being created.
-   */
-  function getDisplayStageStatus(
-    stageNumber: number
-  ): "upcoming" | "current" | "completed" {
-    const existing =
-      stages.find(
-        (stage) =>
-          stage.stage_number ===
-          stageNumber
-      );
-
-    if (existing) {
-      return existing.status;
-    }
-
-    if (stageNumber === 1) {
-      return "completed";
-    }
-
-    if (stageNumber === 2) {
-      return "current";
-    }
-
-    return "upcoming";
-  }
-
-  function handleFileChange(
-    event: ChangeEvent<HTMLInputElement>
-  ) {
-    const selectedFile =
-      event.target.files?.[0] ||
-      null;
-
-    setFile(selectedFile);
-
-    if (selectedFile) {
-      setSuccess("");
-      setError("");
-
-      /*
-       * Automatically create a sensible
-       * document name from the filename.
-       */
-      if (!documentName) {
-        const withoutExtension =
-          selectedFile.name.replace(
-            /\.[^/.]+$/,
-            ""
-          );
-
-        setDocumentName(
-          withoutExtension
-        );
-      }
-    }
-  }
-
-  function handleStageChange(
-    value: string
-  ) {
-    setSelectedStageNumber(value);
-    setSuccess("");
-    setError("");
-
-    const stage =
-      PROJECT_STAGES.find(
-        (item) =>
-          String(item.number) ===
-          value
-      );
-
-    if (stage) {
-      setDocumentName(
-        `${stage.name} - Approved`
-      );
-    }
-  }
-
-  async function refreshStages() {
-    if (!selectedClientId) {
-      return;
-    }
-
-    setLoadingStages(true);
-    setError("");
-
-    try {
-      const response =
-        await fetch(
-          `/api/project-stages?clientId=${encodeURIComponent(
-            selectedClientId
-          )}`,
-          {
-            cache: "no-store",
-          }
-        );
-
-      const text =
-        await response.text();
-
-      let result: any = null;
-
-      try {
-        result =
-          text ? JSON.parse(text) : null;
-      } catch {
-        throw new Error(
-          "The project stages API returned an invalid response."
-        );
-      }
-
-      if (
-        !response.ok ||
-        !result?.success
-      ) {
-        throw new Error(
-          result?.error ||
-            "Failed to refresh project stages."
-        );
-      }
-
-      setStages(
-        Array.isArray(result.stages)
-          ? result.stages
-          : []
-      );
-    } catch (error) {
-      console.error(
-        "Project stages refresh failed:",
-        error
-      );
-
-      setError(
-        error instanceof Error
-          ? error.message
-          : "Failed to refresh project stages."
-      );
-    } finally {
-      setLoadingStages(false);
-    }
-  }
-
-  async function handleSubmit(
-    event: FormEvent<HTMLFormElement>
-  ) {
-    event.preventDefault();
-
-    setError("");
-    setSuccess("");
-
-    if (!selectedClient) {
-      setError(
-        "Please select a client."
-      );
-      return;
-    }
-
-    if (!selectedStage) {
-      setError(
-        "Please select a project stage."
-      );
-      return;
-    }
-
-    if (!file) {
-      setError(
-        "Please select the approved document."
-      );
-      return;
-    }
-
-    if (!documentName.trim()) {
-      setError(
-        "Please enter a document name."
-      );
-      return;
-    }
-
-    /*
-     * The API only allows the current stage
-     * to be completed.
-     *
-     * Stage 1 is already treated as completed.
-     */
-    const displayStatus =
-      getDisplayStageStatus(
-        selectedStage.number
-      );
-
-    if (
-      displayStatus ===
-      "completed"
-    ) {
-      setError(
-        `${selectedStage.name} is already completed.`
-      );
-      return;
-    }
-
-    if (
-      displayStatus ===
-      "upcoming"
-    ) {
-      setError(
-        `${selectedStage.name} is not the current stage. Complete the current stage first.`
-      );
-      return;
-    }
-
-    setUploading(true);
-
-    try {
-      const formData =
-        new FormData();
-
-      formData.append(
-        "file",
-        file
-      );
-
-      formData.append(
-        "clientId",
-        selectedClient.id
-      );
-
-      formData.append(
-        "clientName",
-        getClientName(
-          selectedClient
-        )
-      );
-
-      formData.append(
-        "clientEmail",
-        getClientEmail(
-          selectedClient
-        )
-      );
-
-      formData.append(
-        "projectName",
-        projectName.trim() ||
-          "KBX Spatial Atelier Project"
-      );
-
-      formData.append(
-        "stageNumber",
-        String(
-          selectedStage.number
-        )
-      );
-
-      formData.append(
-        "documentName",
-        documentName.trim()
-      );
-
-      formData.append(
-        "documentType",
-        documentType
-      );
-
-      const response =
-        await fetch(
-          "/api/upload-documents",
-          {
-            method: "POST",
-            body: formData,
-          }
-        );
-
-      const text =
-        await response.text();
-
-      let result: any = null;
-
-      try {
-        result =
-          text ? JSON.parse(text) : null;
-      } catch {
-        throw new Error(
-          "The upload API returned an invalid response."
-        );
-      }
-
-      if (
-        !response.ok ||
-        !result?.success
-      ) {
-        throw new Error(
-          result?.error ||
-            "Failed to upload the document."
-        );
-      }
-
-      setSuccess(
-        `${selectedStage.name} has been completed successfully.`
-      );
-
-      setFile(null);
-
-      setSelectedStageNumber("");
-
-      setDocumentName("");
-
-      const fileInput =
-        document.getElementById(
-          "approved-document"
-        ) as HTMLInputElement | null;
-
-      if (fileInput) {
-        fileInput.value = "";
-      }
-
-      await refreshStages();
-    } catch (error) {
-      console.error(
-        "Stage completion failed:",
-        error
-      );
-
-      setError(
-        error instanceof Error
-          ? error.message
-          : "Failed to complete the project stage."
-      );
-    } finally {
-      setUploading(false);
-    }
-  }
-
-  const completedCount =
-    PROJECT_STAGES.filter(
-      (stage) =>
-        getDisplayStageStatus(
-          stage.number
-        ) === "completed"
-    ).length;
-
-  const progress =
-    Math.round(
-      (completedCount /
-        PROJECT_STAGES.length) *
-        100
-    );
-
+const projects = [
+  {
+    title: "Residential Interior",
+    type: "Interior Design",
+    image: "/project-residential-interior.jpg",
+  },
+  {
+    title: "Contemporary Residence",
+    type: "Architecture",
+    image: "/project-contemporary-residence.jpg",
+  },
+  {
+    title: "Bespoke Living Space",
+    type: "Bespoke Space",
+    image: "/project-bespoke-living-space.jpg",
+  },
+];
+
+const faqs = [
+  {
+    q: "What type of projects do you take on?",
+    a: "We work across residential, commercial and bespoke spatial projects, depending on the requirements of the client.",
+  },
+  {
+    q: "Can I start a project online?",
+    a: "Yes. Create your client profile and complete the digital project brief to begin the process.",
+  },
+  {
+    q: "Do you provide 3D visualizations?",
+    a: "Yes. 3D design development and high-quality visualizations can form part of the project workflow.",
+  },
+];
+
+export default function Home() {
   return (
     <main className="min-h-screen bg-[#f7f7f5] text-black">
-      <div className="mx-auto max-w-7xl px-5 py-8 sm:px-8 lg:px-10">
-        {/* Header */}
-        <header className="mb-8 rounded-[28px] border border-black/10 bg-white p-6 shadow-sm sm:p-8">
-          <div className="flex flex-col gap-6 lg:flex-row lg:items-end lg:justify-between">
-            <div>
-              <p
-                className="mb-2 text-xs font-bold uppercase tracking-[0.22em]"
-                style={{
-                  color: RED,
-                }}
-              >
+
+      {/* ========================================================= */}
+      {/* HEADER */}
+      {/* ========================================================= */}
+
+      <header className="sticky top-0 z-50 border-b border-black/10 bg-[#f7f7f5]/95 backdrop-blur-xl">
+        <div className="mx-auto flex h-[100px] max-w-[1400px] items-center justify-between px-5 md:px-8">
+
+          {/* LOGO + BRAND */}
+          <Link
+            href="/"
+            className="flex items-center"
+          >
+            <div className="relative h-[64px] w-[130px] shrink-0 sm:h-[70px] sm:w-[140px]">
+              <Image
+                src="/kbx-logo.svg"
+                alt="KBX Spatial Atelier"
+                fill
+                priority
+                sizes="140px"
+                className="object-contain object-left"
+              />
+            </div>
+
+            <div className="ml-2 hidden sm:block leading-none">
+              <p className="text-sm font-semibold tracking-tight">
                 KBX Spatial Atelier
               </p>
 
-              <h1 className="text-3xl font-semibold tracking-tight sm:text-4xl">
-                Project Management
-              </h1>
-
-              <p className="mt-3 max-w-2xl text-sm leading-6 text-black/60">
-              Upload final approved project
-documents and update the client&apos;s
-project journey.
+              <p className="mt-[6px] text-[10px] uppercase tracking-[0.2em] text-black/45">
+                Design Studio
               </p>
             </div>
+          </Link>
 
-            <div className="rounded-2xl bg-black px-5 py-4 text-white">
-              <p className="text-[10px] font-semibold uppercase tracking-[0.18em] text-white/50">
-                Project progress
-              </p>
+          {/* NAVIGATION */}
+          <nav className="hidden items-center gap-7 lg:flex">
 
-              <p className="mt-1 text-2xl font-semibold">
-                {progress}%
-              </p>
-            </div>
-          </div>
-        </header>
-
-        {/* Client Selection */}
-        <section className="mb-6 rounded-[28px] border border-black/10 bg-white p-6 shadow-sm sm:p-8">
-          <div className="mb-5">
-            <p
-              className="text-xs font-bold uppercase tracking-[0.18em]"
-              style={{
-                color: RED,
-              }}
+            <a
+              href="#services"
+              className="text-sm text-black/65 transition hover:text-black"
             >
-              01 — Client
+              Services
+            </a>
+
+            <a
+              href="#process"
+              className="text-sm text-black/65 transition hover:text-black"
+            >
+              Process
+            </a>
+
+            <a
+              href="#faqs"
+              className="text-sm text-black/65 transition hover:text-black"
+            >
+              FAQs
+            </a>
+
+            <a
+              href="#about"
+              className="text-sm text-black/65 transition hover:text-black"
+            >
+              About Us
+            </a>
+
+            <a
+              href="#contact"
+              className="text-sm text-black/65 transition hover:text-black"
+            >
+              Contact
+            </a>
+
+          </nav>
+
+          {/* CLIENT PROFILE */}
+          <Link
+            href="/client-profile"
+            className="flex items-center gap-2 rounded-full bg-black px-4 py-2.5 text-sm font-medium text-white transition hover:bg-[#910B0A]"
+          >
+            <span className="flex h-6 w-6 items-center justify-center rounded-full bg-white/15 text-xs">
+              ◉
+            </span>
+
+            <span className="hidden sm:inline">
+              Client&apos;s Profile
+            </span>
+
+            <span className="sm:hidden">
+              Profile
+            </span>
+          </Link>
+
+        </div>
+      </header>
+
+      {/* ========================================================= */}
+      {/* HERO */}
+      {/* ========================================================= */}
+
+      <section className="relative min-h-[calc(100vh-100px)] overflow-hidden border-b border-black/10">
+
+        {/* HERO BACKGROUND IMAGE */}
+        <Image
+          src="/hero.interior.jpg"
+          alt="KBX Spatial Atelier interior design"
+          fill
+          priority
+          sizes="100vw"
+          className="object-cover"
+        />
+
+        {/* VERY SUBTLE OVERLAY */}
+        <div className="absolute inset-0 bg-white/10" />
+
+        {/* HERO CONTENT */}
+        <div className="relative z-10 flex min-h-[calc(100vh-100px)] items-center justify-center px-5 py-20 md:px-8">
+
+          <div className="mx-auto max-w-[1100px] text-center text-black">
+
+            {/* LABEL */}
+            <div className="mx-auto mb-6 flex w-fit items-center gap-2 rounded-full border border-black/15 bg-white/70 px-4 py-2 text-xs font-medium backdrop-blur-md">
+
+              <span
+                className="h-2 w-2 rounded-full"
+                style={{ backgroundColor: RED }}
+              />
+
+              Spatial Design Studio
+
+            </div>
+
+            {/* MAIN HEADING */}
+            <h1 className="mx-auto max-w-5xl text-4xl font-semibold leading-[1.05] tracking-[-0.04em] md:text-6xl lg:text-7xl">
+
+              Sophisticated environments.
+              <br />
+
+              <span style={{ color: RED }}>
+                Timeless design.
+              </span>
+
+            </h1>
+
+            {/* DESCRIPTION */}
+            <p className="mx-auto mt-6 max-w-xl text-sm leading-6 text-white md:text-base">
+
+              Interior Design
+              <span className="mx-2 text-white/60">•</span>
+              Architecture
+              <span className="mx-2 text-white/60">•</span>
+              Bespoke Space
+
             </p>
 
-            <h2 className="mt-2 text-xl font-semibold">
-              Select a client
-            </h2>
+            {/* BUTTONS */}
+            <div className="mt-9 flex flex-col justify-center gap-3 sm:flex-row">
+
+              <Link
+                href="/client-profile"
+                className="rounded-full px-7 py-3.5 text-sm font-semibold text-white transition hover:opacity-90"
+                style={{ backgroundColor: RED }}
+              >
+                Start a Project
+              </Link>
+
+              <Link
+                href="/consultation"
+                className="rounded-full border border-black/20 bg-white/75 px-7 py-3.5 text-sm font-semibold text-black backdrop-blur-md transition hover:bg-white"
+              >
+                Book a Free Consultation
+              </Link>
+
+            </div>
+
           </div>
 
-          {loadingClients ? (
-            <div className="rounded-2xl bg-black/[0.03] px-5 py-4 text-sm text-black/60">
-              Loading clients...
+        </div>
+
+      </section>
+
+      {/* ========================================================= */}
+      {/* APP QUICK ACCESS */}
+      {/* ========================================================= */}
+
+      <section className="px-5 py-8 md:px-8">
+        <div className="mx-auto grid max-w-[1400px] gap-3 md:grid-cols-4">
+
+          {/* START A PROJECT */}
+          <Link
+            href="/client-profile"
+            className="rounded-2xl border border-black/10 bg-white p-5 transition hover:-translate-y-0.5 hover:border-black/25"
+          >
+
+            <div className="mb-8 flex items-center justify-between">
+
+              <span className="flex h-10 w-10 items-center justify-center rounded-xl bg-black text-lg text-white">
+                ✦
+              </span>
+
+              <span className="text-xs text-black/35">
+                01
+              </span>
+
             </div>
-          ) : clients.length === 0 ? (
-            <div className="rounded-2xl border border-amber-200 bg-amber-50 px-5 py-4 text-sm text-amber-900">
-              No client accounts were found in
-              the current client account system.
-            </div>
-          ) : (
-            <select
-              value={selectedClientId}
-              onChange={(event) => {
-                setSelectedClientId(
-                  event.target.value
-                );
-                setSelectedStageNumber("");
-                setFile(null);
-                setDocumentName("");
-                setError("");
-                setSuccess("");
-              }}
-              className="w-full rounded-2xl border border-black/15 bg-white px-4 py-4 text-sm outline-none transition focus:border-black"
-            >
-              <option value="">
-                Select a client
-              </option>
 
-              {clients.map(
-                (client) => (
-                  <option
-                    key={client.id}
-                    value={client.id}
-                  >
-                    {getClientName(
-                      client
-                    )}{" "}
-                    {getClientEmail(
-                      client
-                    )
-                      ? `— ${getClientEmail(
-                          client
-                        )}`
-                      : ""}
-                  </option>
-                )
-              )}
-            </select>
-          )}
+            <p className="text-sm font-semibold">
+              Start a Project
+            </p>
 
-          {selectedClient && (
-            <div className="mt-4 grid gap-3 sm:grid-cols-3">
-              <div className="rounded-2xl bg-black/[0.03] p-4">
-                <p className="text-[10px] font-semibold uppercase tracking-[0.15em] text-black/40">
-                  Client
-                </p>
-                <p className="mt-1 text-sm font-semibold">
-                  {getClientName(
-                    selectedClient
-                  )}
-                </p>
-              </div>
+            <p className="mt-1 text-xs leading-5 text-black/45">
+              Tell us what you want to create.
+            </p>
 
-              <div className="rounded-2xl bg-black/[0.03] p-4">
-                <p className="text-[10px] font-semibold uppercase tracking-[0.15em] text-black/40">
-                  Email
-                </p>
-                <p className="mt-1 break-all text-sm font-semibold">
-                  {getClientEmail(
-                    selectedClient
-                  ) || "Not provided"}
-                </p>
-              </div>
+          </Link>
 
-              <div className="rounded-2xl bg-black/[0.03] p-4">
-                <p className="text-[10px] font-semibold uppercase tracking-[0.15em] text-black/40">
-                  Phone
-                </p>
-                <p className="mt-1 text-sm font-semibold">
-                  {getClientPhone(
-                    selectedClient
-                  ) || "Not provided"}
-                </p>
-              </div>
-            </div>
-          )}
-        </section>
+          {/* CONSULTATION */}
+          <Link
+            href="/consultation"
+            className="rounded-2xl border border-black/10 bg-white p-5 transition hover:-translate-y-0.5 hover:border-black/25"
+          >
 
-        {/* Project Journey */}
-        {selectedClient && (
-          <section className="mb-6 rounded-[28px] border border-black/10 bg-white p-6 shadow-sm sm:p-8">
-            <div className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
-              <div>
-                <p
-                  className="text-xs font-bold uppercase tracking-[0.18em]"
-                  style={{
-                    color: RED,
-                  }}
-                >
-                  02 — Project Journey
-                </p>
+            <div className="mb-8 flex items-center justify-between">
 
-                <h2 className="mt-2 text-xl font-semibold">
-                  Stage status
-                </h2>
-              </div>
-
-              <button
-                type="button"
-                onClick={refreshStages}
-                disabled={loadingStages}
-                className="rounded-full border border-black/15 px-4 py-2.5 text-xs font-semibold transition hover:bg-black hover:text-white disabled:cursor-not-allowed disabled:opacity-50"
+              <span
+                className="flex h-10 w-10 items-center justify-center rounded-xl text-lg text-white"
+                style={{ backgroundColor: RED }}
               >
-                {loadingStages
-                  ? "REFRESHING..."
-                  : "REFRESH STAGES"}
-              </button>
+                ◷
+              </span>
+
+              <span className="text-xs text-black/35">
+                02
+              </span>
+
             </div>
 
-            {loadingStages ? (
-              <div className="mt-6 rounded-2xl bg-black/[0.03] px-5 py-5 text-sm text-black/60">
-                Loading project stages...
-              </div>
-            ) : (
-              <div className="mt-6 grid gap-3">
-                {PROJECT_STAGES.map(
-                  (stage) => {
-                    const status =
-                      getDisplayStageStatus(
-                        stage.number
-                      );
+            <p className="text-sm font-semibold">
+              Consultation
+            </p>
 
-                    return (
-                      <div
-                        key={
-                          stage.number
-                        }
-                        className={`flex flex-col gap-4 rounded-2xl border p-4 sm:flex-row sm:items-center sm:justify-between ${
-                          status ===
-                          "completed"
-                            ? "border-emerald-200 bg-emerald-50"
-                            : status ===
-                              "current"
-                            ? "border-black bg-black text-white"
-                            : "border-black/10 bg-white"
-                        }`}
-                      >
-                        <div className="flex items-center gap-4">
-                          <div
-                            className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-full text-xs font-bold ${
-                              status ===
-                              "completed"
-                                ? "bg-emerald-600 text-white"
-                                : status ===
-                                  "current"
-                                ? "bg-white text-black"
-                                : "bg-black/[0.06] text-black/40"
-                            }`}
-                          >
-                            {String(
-                              stage.number
-                            ).padStart(
-                              2,
-                              "0"
-                            )}
-                          </div>
+            <p className="mt-1 text-xs leading-5 text-black/45">
+              Discuss your project with KBX.
+            </p>
 
-                          <div>
-                            <p className="text-sm font-semibold">
-                              {stage.name}
-                            </p>
+          </Link>
 
-                            <p
-                              className={`mt-1 text-xs ${
-                                status ===
-                                "current"
-                                  ? "text-white/55"
-                                  : "text-black/45"
-                              }`}
-                            >
-                              {status ===
-                              "completed"
-                                ? "Completed"
-                                : status ===
-                                  "current"
-                                ? "Current stage"
-                                : "Upcoming"}
-                            </p>
-                          </div>
-                        </div>
+          {/* PROCESS */}
+          <a
+            href="#process"
+            className="rounded-2xl border border-black/10 bg-white p-5 transition hover:-translate-y-0.5 hover:border-black/25"
+          >
 
-                        <div
-                          className={`text-xs font-bold uppercase tracking-[0.14em] ${
-                            status ===
-                            "completed"
-                              ? "text-emerald-700"
-                              : status ===
-                                "current"
-                              ? "text-white"
-                              : "text-black/35"
-                          }`}
-                        >
-                          {status ===
-                          "completed"
-                            ? "✓ Completed"
-                            : status ===
-                              "current"
-                            ? "Current"
-                            : "Upcoming"}
-                        </div>
-                      </div>
-                    );
-                  }
-                )}
-              </div>
-            )}
-          </section>
-        )}
+            <div className="mb-8 flex items-center justify-between">
 
-        {/* Upload */}
-        {selectedClient && (
-          <section className="mb-6 rounded-[28px] border border-black/10 bg-white p-6 shadow-sm sm:p-8">
-            <div className="mb-6">
+              <span className="flex h-10 w-10 items-center justify-center rounded-xl bg-black text-lg text-white">
+                →
+              </span>
+
+              <span className="text-xs text-black/35">
+                03
+              </span>
+
+            </div>
+
+            <p className="text-sm font-semibold">
+              Our Process
+            </p>
+
+            <p className="mt-1 text-xs leading-5 text-black/45">
+              See how your project moves forward.
+            </p>
+
+          </a>
+
+          {/* CONTACT */}
+          <a
+            href="#contact"
+            className="rounded-2xl border border-black/10 bg-white p-5 transition hover:-translate-y-0.5 hover:border-black/25"
+          >
+
+            <div className="mb-8 flex items-center justify-between">
+
+              <span className="flex h-10 w-10 items-center justify-center rounded-xl bg-black text-lg text-white">
+                ↗
+              </span>
+
+              <span className="text-xs text-black/35">
+                04
+              </span>
+
+            </div>
+
+            <p className="text-sm font-semibold">
+              Contact Studio
+            </p>
+
+            <p className="mt-1 text-xs leading-5 text-black/45">
+              Have a question? Get in touch.
+            </p>
+
+          </a>
+
+        </div>
+      </section>
+
+      {/* ========================================================= */}
+      {/* WHAT WE DO */}
+      {/* ========================================================= */}
+
+      <section
+        id="services"
+        className="px-5 py-12 md:px-8 md:py-16"
+      >
+
+        <div className="mx-auto max-w-[1400px]">
+
+          {/* SECTION HEADER */}
+          <div className="mb-8 flex items-end justify-between">
+
+            <div>
+
               <p
-                className="text-xs font-bold uppercase tracking-[0.18em]"
-                style={{
-                  color: RED,
-                }}
+                className="mb-2 text-xs font-semibold uppercase tracking-[0.2em]"
+                style={{ color: RED }}
               >
-                03 — Approved Document
+                What We Do
               </p>
 
-              <h2 className="mt-2 text-xl font-semibold">
-                Complete a project stage
+              <h2 className="text-2xl font-semibold tracking-tight md:text-3xl">
+                Spaces designed around you.
               </h2>
 
-              <p className="mt-2 max-w-2xl text-sm leading-6 text-black/55">
-              Upload the final approved document
-for the client&apos;s current stage. The
-stage will be marked completed and
-              </p>
             </div>
 
-            <form
-              onSubmit={handleSubmit}
-              className="space-y-5"
+            <span className="hidden text-xs text-black/35 sm:block">
+              08 services
+            </span>
+
+          </div>
+
+          {/* SERVICES GRID */}
+          <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+
+            {services.map((service) => (
+              <div
+                key={service.number}
+                className="group relative overflow-hidden rounded-2xl border border-black/10 bg-[#ecece9]"
+              >
+
+                {/* SERVICE IMAGE */}
+                <div className="relative aspect-[4/5] overflow-hidden">
+
+                  <Image
+                    src={service.image}
+                    alt={service.title}
+                    fill
+                    sizes="(max-width: 640px) 100vw, (max-width: 1024px) 50vw, 25vw"
+                    className="object-cover transition duration-700 group-hover:scale-105"
+                  />
+
+                  {/* DARK GRADIENT */}
+                  <div className="absolute inset-0 bg-gradient-to-t from-black/85 via-black/20 to-transparent" />
+
+                  {/* NUMBER */}
+                  <div className="absolute right-4 top-4 flex h-9 w-9 items-center justify-center rounded-full bg-white/90 text-[10px] font-semibold text-black backdrop-blur-sm">
+                    {service.number}
+                  </div>
+
+                  {/* SERVICE TEXT */}
+                  <div className="absolute inset-x-0 bottom-0 p-5">
+
+                    <h3 className="max-w-[280px] text-lg font-semibold leading-tight text-white">
+                      {service.title}
+                    </h3>
+
+                    <div
+                      className="mt-4 h-px w-8 transition-all duration-500 group-hover:w-16"
+                      style={{ backgroundColor: RED }}
+                    />
+
+                  </div>
+
+                </div>
+
+              </div>
+            ))}
+
+          </div>
+
+        </div>
+
+      </section>
+
+      {/* ========================================================= */}
+      {/* PROJECTS */}
+      {/* ========================================================= */}
+
+      <section className="border-y border-black/10 bg-white px-5 py-12 md:px-8 md:py-16">
+
+        <div className="mx-auto max-w-[1400px]">
+
+          <div className="mb-8 flex items-end justify-between">
+
+            <div>
+
+              <p
+                className="mb-2 text-xs font-semibold uppercase tracking-[0.2em]"
+                style={{ color: RED }}
+              >
+                Selected Projects
+              </p>
+
+              <h2 className="text-2xl font-semibold tracking-tight md:text-3xl">
+                Spaces in progress
+              </h2>
+
+            </div>
+
+            <button className="hidden rounded-full border border-black/10 px-4 py-2 text-xs font-medium sm:block">
+              View all projects →
+            </button>
+
+          </div>
+
+          <div className="grid gap-3 md:grid-cols-3">
+
+            {projects.map((project) => (
+              <div
+                key={project.title}
+                className="group"
+              >
+
+                {/* PROJECT IMAGE */}
+                <div className="relative aspect-[4/3] overflow-hidden rounded-2xl border border-black/10 bg-[#ecece9]">
+
+                  <Image
+                    src={project.image}
+                    alt={project.title}
+                    fill
+                    sizes="(max-width: 768px) 100vw, 33vw"
+                    className="object-cover transition duration-500 group-hover:scale-105"
+                  />
+
+                  {/* PROJECT TYPE */}
+                  <div className="absolute left-4 top-4 rounded-full bg-white/90 px-3 py-1.5 text-[10px] font-semibold uppercase tracking-wider backdrop-blur-sm">
+                    {project.type}
+                  </div>
+
+                </div>
+
+                {/* PROJECT TITLE */}
+                <div className="flex items-center justify-between px-1 pt-4">
+
+                  <p className="text-sm font-semibold">
+                    {project.title}
+                  </p>
+
+                  <span className="text-black/30 transition group-hover:text-black">
+                    ↗
+                  </span>
+
+                </div>
+
+              </div>
+            ))}
+
+          </div>
+
+        </div>
+
+      </section>
+
+      {/* ========================================================= */}
+      {/* WHY KBX */}
+      {/* ========================================================= */}
+
+      <section
+        id="about"
+        className="px-5 py-12 md:px-8 md:py-16"
+      >
+
+        <div className="mx-auto grid max-w-[1400px] gap-8 md:grid-cols-[0.8fr_1.2fr]">
+
+          <div>
+
+            <p
+              className="mb-2 text-xs font-semibold uppercase tracking-[0.2em]"
+              style={{ color: RED }}
             >
-              <div>
-                <label
-                  htmlFor="stage"
-                  className="mb-2 block text-xs font-bold uppercase tracking-[0.14em] text-black/55"
+              Why KBX
+            </p>
+
+            <h2 className="max-w-md text-3xl font-semibold leading-tight tracking-tight md:text-4xl">
+              Design with intention, not decoration.
+            </h2>
+
+          </div>
+
+          <div className="grid gap-3 sm:grid-cols-2">
+
+            {[
+              [
+                "01",
+                "Purposeful Design",
+                "Every decision begins with how the space needs to work.",
+              ],
+              [
+                "02",
+                "Attention to Detail",
+                "Materials, proportions and details are developed carefully.",
+              ],
+              [
+                "03",
+                "End-to-End Thinking",
+                "Design is connected to documentation, fabrication and installation.",
+              ],
+              [
+                "04",
+                "Client-Centred",
+                "Your requirements remain central throughout the project.",
+              ],
+            ].map(([num, title, description]) => (
+              <div
+                key={num}
+                className="rounded-2xl border border-black/10 bg-white p-5"
+              >
+
+                <span
+                  className="text-xs font-semibold"
+                  style={{ color: RED }}
                 >
-                  Project stage
-                </label>
+                  {num}
+                </span>
 
-                <select
-                  id="stage"
-                  value={
-                    selectedStageNumber
-                  }
-                  onChange={(event) =>
-                    handleStageChange(
-                      event.target.value
-                    )
-                  }
-                  className="w-full rounded-2xl border border-black/15 bg-white px-4 py-4 text-sm outline-none transition focus:border-black"
+                <h3 className="mt-8 text-sm font-semibold">
+                  {title}
+                </h3>
+
+                <p className="mt-2 text-xs leading-5 text-black/45">
+                  {description}
+                </p>
+
+              </div>
+            ))}
+
+          </div>
+
+        </div>
+
+      </section>
+
+      {/* ========================================================= */}
+      {/* PROCESS */}
+      {/* ========================================================= */}
+
+      <section
+        id="process"
+        className="bg-black px-5 py-12 text-white md:px-8 md:py-16"
+      >
+
+        <div className="mx-auto max-w-[1400px]">
+
+          <div className="mb-10">
+
+            <p className="mb-2 text-xs font-semibold uppercase tracking-[0.2em] text-white/50">
+              Project Workflow
+            </p>
+
+            <h2 className="text-2xl font-semibold tracking-tight md:text-3xl">
+              From brief to finished space.
+            </h2>
+
+          </div>
+
+          <div className="grid grid-cols-2 gap-px overflow-hidden rounded-2xl border border-white/10 bg-white/10 md:grid-cols-3 lg:grid-cols-5">
+
+            {process.map((item, index) => (
+              <div
+                key={item}
+                className="bg-black p-5 transition hover:bg-[#910B0A]"
+              >
+
+                <span className="text-[10px] text-white/35">
+                  {String(index + 1).padStart(2, "0")}
+                </span>
+
+                <p className="mt-8 text-sm font-medium">
+                  {item}
+                </p>
+
+              </div>
+            ))}
+
+          </div>
+
+        </div>
+
+      </section>
+
+      {/* ========================================================= */}
+      {/* FAQ */}
+      {/* ========================================================= */}
+
+      <section
+        id="faqs"
+        className="px-5 py-12 md:px-8 md:py-16"
+      >
+
+        <div className="mx-auto max-w-[1000px]">
+
+          <div className="mb-8 text-center">
+
+            <p
+              className="mb-2 text-xs font-semibold uppercase tracking-[0.2em]"
+              style={{ color: RED }}
+            >
+              FAQs
+            </p>
+
+            <h2 className="text-2xl font-semibold tracking-tight md:text-3xl">
+              Frequently asked questions
+            </h2>
+
+          </div>
+
+          <div className="space-y-2">
+
+            {faqs.map((faq) => (
+              <details
+                key={faq.q}
+                className="group rounded-2xl border border-black/10 bg-white"
+              >
+
+                <summary className="flex cursor-pointer list-none items-center justify-between p-5 text-sm font-medium">
+
+                  {faq.q}
+
+                  <span className="ml-4 text-lg text-black/40 transition group-open:rotate-45">
+                    +
+                  </span>
+
+                </summary>
+
+                <p className="px-5 pb-5 text-sm leading-6 text-black/50">
+                  {faq.a}
+                </p>
+
+              </details>
+            ))}
+
+          </div>
+
+        </div>
+
+      </section>
+
+      {/* ========================================================= */}
+      {/* CONTACT */}
+      {/* ========================================================= */}
+
+      <section
+        id="contact"
+        className="px-5 pb-12 md:px-8 md:pb-16"
+      >
+
+        <div className="mx-auto max-w-[1400px] overflow-hidden rounded-3xl bg-[#910B0A] text-white">
+
+          <div className="grid md:grid-cols-[1fr_0.9fr]">
+
+            {/* CONTACT INFORMATION */}
+            <div className="p-7 md:p-10">
+
+              <p className="text-xs font-semibold uppercase tracking-[0.2em] text-white/60">
+                Get In Touch
+              </p>
+
+              <h2 className="mt-5 max-w-lg text-3xl font-semibold leading-tight tracking-tight md:text-4xl">
+                Have a space in mind?
+              </h2>
+
+              <p className="mt-4 max-w-md text-sm leading-6 text-white/65">
+                Tell us a little about your project and we&apos;ll get back to you.
+              </p>
+
+              <div className="mt-8 space-y-3">
+
+                <p className="text-xs uppercase tracking-[0.15em] text-white/45">
+                  Contact
+                </p>
+
+                <a
+                  href="tel:+233558167009"
+                  className="block text-sm font-medium transition hover:text-white/70"
                 >
-                  <option value="">
-                    Select current stage
-                  </option>
+                  +233 558 167 009
+                </a>
 
-                  {PROJECT_STAGES.map(
-                    (stage) => {
-                      const status =
-                        getDisplayStageStatus(
-                          stage.number
-                        );
+                <a
+                  href="tel:+233209468411"
+                  className="block text-sm font-medium transition hover:text-white/70"
+                >
+                  +233 209 468 411
+                </a>
 
-                      return (
-                        <option
-                          key={
-                            stage.number
-                          }
-                          value={String(
-                            stage.number
-                          )}
-                          disabled={
-                            status !==
-                            "current"
-                          }
-                        >
-                          {String(
-                            stage.number
-                          ).padStart(
-                            2,
-                            "0"
-                          )}{" "}
-                          —{" "}
-                          {stage.name}
-                          {status ===
-                          "completed"
-                            ? " — Completed"
-                            : status ===
-                              "upcoming"
-                            ? " — Upcoming"
-                            : " — Current"}
-                        </option>
-                      );
-                    }
-                  )}
-                </select>
-
-                {selectedStageRecord && (
-                  <p className="mt-2 text-xs text-black/45">
-                    Current status:{" "}
-                    <strong>
-                      {
-                        selectedStageRecord.status
-                      }
-                    </strong>
-                  </p>
-                )}
               </div>
 
-              <div>
-                <label
-                  htmlFor="project-name"
-                  className="mb-2 block text-xs font-bold uppercase tracking-[0.14em] text-black/55"
-                >
-                  Project name
-                </label>
+            </div>
 
-                <input
-                  id="project-name"
-                  type="text"
-                  value={projectName}
-                  onChange={(event) =>
-                    setProjectName(
-                      event.target.value
-                    )
-                  }
-                  placeholder="e.g. Otoo Residence — Full Interior"
-                  className="w-full rounded-2xl border border-black/15 bg-white px-4 py-4 text-sm outline-none transition placeholder:text-black/30 focus:border-black"
-                />
-              </div>
+            {/* CONTACT FORM */}
+            <form className="space-y-3 bg-black/10 p-7 md:p-10">
 
-              <div>
-                <label
-                  htmlFor="document-name"
-                  className="mb-2 block text-xs font-bold uppercase tracking-[0.14em] text-black/55"
-                >
-                  Document name
-                </label>
+              <input
+                type="text"
+                placeholder="Your name"
+                className="w-full rounded-xl border border-white/15 bg-white/10 px-4 py-3 text-sm outline-none placeholder:text-white/45 focus:border-white/40"
+              />
 
-                <input
-                  id="document-name"
-                  type="text"
-                  value={documentName}
-                  onChange={(event) =>
-                    setDocumentName(
-                      event.target.value
-                    )
-                  }
-                  placeholder="e.g. Site Survey — Approved"
-                  className="w-full rounded-2xl border border-black/15 bg-white px-4 py-4 text-sm outline-none transition placeholder:text-black/30 focus:border-black"
-                />
-              </div>
+              <input
+                type="email"
+                placeholder="Email address"
+                className="w-full rounded-xl border border-white/15 bg-white/10 px-4 py-3 text-sm outline-none placeholder:text-white/45 focus:border-white/40"
+              />
 
-              <div>
-                <label
-                  htmlFor="document-type"
-                  className="mb-2 block text-xs font-bold uppercase tracking-[0.14em] text-black/55"
-                >
-                  Document type
-                </label>
+              <input
+                type="tel"
+                placeholder="Contact number"
+                className="w-full rounded-xl border border-white/15 bg-white/10 px-4 py-3 text-sm outline-none placeholder:text-white/45 focus:border-white/40"
+              />
 
-                <select
-                  id="document-type"
-                  value={documentType}
-                  onChange={(event) =>
-                    setDocumentType(
-                      event.target.value
-                    )
-                  }
-                  className="w-full rounded-2xl border border-black/15 bg-white px-4 py-4 text-sm outline-none transition focus:border-black"
-                >
-                  <option value="approved_stage_document">
-                    Approved Stage Document
-                  </option>
-
-                  <option value="site_survey">
-                    Site Survey
-                  </option>
-
-                  <option value="concept">
-                    Concept
-                  </option>
-
-                  <option value="spatial_planning">
-                    Spatial Planning
-                  </option>
-
-                  <option value="3d_development">
-                    3D Development
-                  </option>
-
-                  <option value="technical_documentation">
-                    Technical Documentation
-                  </option>
-
-                  <option value="fabrication">
-                    Fabrication
-                  </option>
-
-                  <option value="installation">
-                    Installation
-                  </option>
-                </select>
-              </div>
-
-              <div>
-                <label
-                  htmlFor="approved-document"
-                  className="mb-2 block text-xs font-bold uppercase tracking-[0.14em] text-black/55"
-                >
-                  Approved document
-                </label>
-
-                <input
-                  id="approved-document"
-                  type="file"
-                  accept=".pdf,application/pdf"
-                  onChange={
-                    handleFileChange
-                  }
-                  className="block w-full rounded-2xl border border-dashed border-black/20 bg-black/[0.02] px-4 py-5 text-sm file:mr-4 file:rounded-full file:border-0 file:bg-black file:px-4 file:py-2 file:text-xs file:font-semibold file:text-white"
-                />
-
-                {file && (
-                  <p className="mt-2 text-xs text-black/50">
-                    Selected:{" "}
-                    <strong>
-                      {file.name}
-                    </strong>
-                  </p>
-                )}
-              </div>
-
-              {error && (
-                <div className="rounded-2xl border border-red-200 bg-red-50 px-4 py-4 text-sm leading-6 text-red-800">
-                  {error}
-                </div>
-              )}
-
-              {success && (
-                <div className="rounded-2xl border border-emerald-200 bg-emerald-50 px-4 py-4 text-sm leading-6 text-emerald-800">
-                  {success}
-                </div>
-              )}
+              <textarea
+                placeholder="Tell us about your project..."
+                rows={4}
+                className="w-full resize-none rounded-xl border border-white/15 bg-white/10 px-4 py-3 text-sm outline-none placeholder:text-white/45 focus:border-white/40"
+              />
 
               <button
                 type="submit"
-                disabled={
-                  uploading ||
-                  !selectedStage ||
-                  !file
-                }
-                className="w-full rounded-full px-6 py-4 text-sm font-bold tracking-[0.08em] text-white transition hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-40"
-                style={{
-                  backgroundColor:
-                    RED,
-                }}
+                className="w-full rounded-xl bg-white px-4 py-3.5 text-sm font-semibold text-black transition hover:bg-white/90"
               >
-                {uploading
-                  ? "UPLOADING & COMPLETING..."
-                  : "UPLOAD & COMPLETE STAGE"}
+                Send Enquiry →
               </button>
 
-              <p className="text-center text-xs leading-5 text-black/40">
-                Only upload a document after the
-                client has reviewed and approved the
-                final version.
-              </p>
             </form>
-          </section>
-        )}
 
-        {!selectedClient && !loadingClients && (
-          <section className="rounded-[28px] border border-dashed border-black/15 bg-white p-10 text-center">
-            <div className="mx-auto max-w-md">
-              <p className="text-sm font-semibold">
-                Select a client to begin.
+          </div>
+
+        </div>
+
+      </section>
+
+      {/* ========================================================= */}
+      {/* FOOTER */}
+      {/* ========================================================= */}
+
+      <footer className="border-t border-black/10 bg-white px-5 py-8 md:px-8">
+
+        <div className="mx-auto max-w-[1400px]">
+
+          <div className="flex flex-col gap-8 md:flex-row md:items-end md:justify-between">
+
+            {/* FOOTER BRAND */}
+            <div>
+
+              <div className="flex items-center">
+
+                <div className="relative h-[48px] w-[100px] shrink-0 sm:h-[52px] sm:w-[105px]">
+
+                  <Image
+                    src="/kbx-logo.svg"
+                    alt="KBX Spatial Atelier"
+                    fill
+                    sizes="105px"
+                    className="object-contain object-left"
+                  />
+
+                </div>
+
+                <div className="ml-2 leading-none">
+
+                  <p className="text-sm font-semibold">
+                    KBX Spatial Atelier
+                  </p>
+
+                  <p className="mt-[5px] text-[10px] uppercase tracking-[0.18em] text-black/40">
+                    Interior Design • Architecture • Bespoke Space
+                  </p>
+
+                </div>
+
+              </div>
+
+              <p className="mt-5 max-w-sm text-xs leading-5 text-black/40">
+                Creating thoughtful, sophisticated environments through design,
+                architecture and bespoke spatial solutions.
               </p>
 
-              <p className="mt-2 text-sm leading-6 text-black/50">
-                Once a client is selected, their
-                project journey and approved-document
-                workflow will appear here.
-              </p>
             </div>
-          </section>
-        )}
-      </div>
+
+            {/* FOOTER CONTACT */}
+            <div className="flex flex-col gap-4 text-xs text-black/50">
+
+              <div className="flex flex-wrap gap-5">
+
+                <a
+                  href="tel:+233558167009"
+                  className="transition hover:text-black"
+                >
+                  ☎ +233 558 167 009
+                </a>
+
+                <a
+                  href="tel:+233209468411"
+                  className="transition hover:text-black"
+                >
+                  ☎ +233 209 468 411
+                </a>
+
+              </div>
+
+              <div className="flex flex-wrap gap-5">
+
+                <a
+                  href="https://www.tiktok.com/@kbx_spatial_atelier?_r=1&_t=ZS-99XAWb0oTBY"
+                  target="_blank"
+                  rel="noreferrer"
+                  className="transition hover:text-black"
+                >
+                  TikTok ↗
+                </a>
+
+                <a
+                  href="https://www.instagram.com/kbx_spatial_atelier/"
+                  target="_blank"
+                  rel="noreferrer"
+                  className="transition hover:text-black"
+                >
+                  Instagram ↗
+                </a>
+
+                <a
+                  href="https://www.facebook.com/share/1cKce7UyzT/"
+                  target="_blank"
+                  rel="noreferrer"
+                  className="transition hover:text-black"
+                >
+                  Facebook ↗
+                </a>
+
+              </div>
+
+            </div>
+
+          </div>
+
+          {/* COPYRIGHT */}
+          <div className="mt-8 border-t border-black/10 pt-5">
+
+            <div className="flex flex-col gap-2 text-[10px] uppercase tracking-[0.15em] text-black/30 sm:flex-row sm:justify-between">
+
+              <span>
+                © 2026 KBX Spatial Atelier
+              </span>
+
+              <span>
+                Designed with intention.
+              </span>
+
+            </div>
+
+            <Link
+              href="/admin/project"
+              aria-label="Website developer"
+              className="mt-4 block text-center text-[9px] text-black/25 transition hover:text-black/40"
+            >
+              Website developed by Isaac Otoo, CEO of KBX Spatial Atelier.
+            </Link>
+
+          </div>
+
+        </div>
+
+      </footer>
+
     </main>
   );
 }
