@@ -967,7 +967,7 @@ export default function Home() {
             </div>
 
             <Link
-              href="/admin/project"
+              href="/app/admin/project"
               aria-label="Website developer"
               className="mt-4 block text-center text-[9px] text-black/25 transition hover:text-black/40"
             >
