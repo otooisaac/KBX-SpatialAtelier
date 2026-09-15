@@ -348,7 +348,6 @@ function drawPageHeader(
     size: 7,
     font: bold,
     color: DARK_GRAY,
-   
   });
 
   page.drawText("CLIENT DESIGN BRIEF", {
@@ -494,7 +493,6 @@ function drawSectionTitle(
       size: 10,
       font: current.bold,
       color: BLACK,
-      characterSpacing: 0.6,
     }
   );
 
@@ -1325,7 +1323,6 @@ function drawCoverPage(
       size: 10,
       font: current.bold,
       color: RED,
-      characterSpacing: 2,
     }
   );
 
@@ -1348,7 +1345,6 @@ function drawCoverPage(
       size: 8,
       font: current.regular,
       color: MID_GRAY,
-      characterSpacing: 1.8,
     }
   );
 
@@ -1710,7 +1706,6 @@ async function appendReferenceImages(
       size: 14,
       font: bold,
       color: BLACK,
-      characterSpacing: 0.8,
     }
   );
 
