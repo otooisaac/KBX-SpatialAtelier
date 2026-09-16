@@ -1,984 +1,917 @@
 "use client";
 
-import Image from "next/image";
+import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 
 const RED = "#910B0A";
 
-const process = [
-  "Consultation",
+type Client = {
+  id?: string;
+  clientId?: string;
+  name?: string;
+  email?: string;
+  phone?: string;
+  projectName?: string;
+  projectType?: string;
+};
+
+type DocumentItem = {
+  id: string;
+  name: string;
+  fileName: string;
+  fileType?: string;
+  fileSize?: number;
+  category: string;
+  description?: string;
+  url?: string;
+  createdAt?: string;
+};
+
+const categories = [
   "Client Brief",
   "Site Survey",
+  "Floor Plan",
   "Concept",
-  "Spatial Planning",
-  "3D Development",
-  "Technical Documentation",
+  "3D Visualization",
+  "Technical Drawing",
+  "Quotation",
+  "Invoice",
+  "Material Selection",
   "Fabrication",
   "Installation",
+  "Other",
 ];
 
-const services = [
-  {
-    number: "01",
-    title: "Full Interior Design",
-    image: "/service-full-interior.jpg",
-  },
-  {
-    number: "02",
-    title: "Custom Kitchen Design & Installation",
-    image: "/service-kitchen.jpg",
-  },
-  {
-    number: "03",
-    title: "Wardrobe & Walk-in Closet Design & Installation",
-    image: "/service-wardrobe.jpg",
-  },
-  {
-    number: "04",
-    title: "TV Unit Design & Installation",
-    image: "/service-tv-unit.jpg",
-  },
-  {
-    number: "05",
-    title: "Bespoke Joinery & Furniture",
-    image: "/service-joinery.jpg",
-  },
-  {
-    number: "06",
-    title: "Interior Architecture & Spatial Planning",
-    image: "/service-spatial-planning.jpg",
-  },
-  {
-    number: "07",
-    title: "3D Visualization & Rendering",
-    image: "/service-3d-visualization.jpg",
-  },
-  {
-    number: "08",
-    title: "Commercial & Residential Interiors",
-    image: "/service-commercial.jpg",
-  },
-];
+function formatFileSize(bytes?: number) {
+  if (!bytes) return "—";
 
-const projects = [
-  {
-    title: "Residential Interior",
-    type: "Interior Design",
-    image: "/project-residential-interior.jpg",
-  },
-  {
-    title: "Contemporary Residence",
-    type: "Architecture",
-    image: "/project-contemporary-residence.jpg",
-  },
-  {
-    title: "Bespoke Living Space",
-    type: "Bespoke Space",
-    image: "/project-bespoke-living-space.jpg",
-  },
-];
+  if (bytes < 1024) {
+    return `${bytes} B`;
+  }
 
-const faqs = [
-  {
-    q: "What type of projects do you take on?",
-    a: "We work across residential, commercial and bespoke spatial projects, depending on the requirements of the client.",
-  },
-  {
-    q: "Can I start a project online?",
-    a: "Yes. Create your client profile and complete the digital project brief to begin the process.",
-  },
-  {
-    q: "Do you provide 3D visualizations?",
-    a: "Yes. 3D design development and high-quality visualizations can form part of the project workflow.",
-  },
-];
+  if (bytes < 1024 * 1024) {
+    return `${(bytes / 1024).toFixed(1)} KB`;
+  }
 
-export default function Home() {
+  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+}
+
+function getClientId(client: Client | null) {
+  if (!client) return "";
+
+  return (
+    client.id ||
+    client.clientId ||
+    ""
+  );
+}
+
+export default function AdminProjectPage() {
+  const fileInputRef = useRef<HTMLInputElement | null>(null);
+
+  const [client, setClient] = useState<Client | null>(null);
+  const [documents, setDocuments] = useState<DocumentItem[]>([]);
+
+  const [file, setFile] = useState<File | null>(null);
+  const [documentName, setDocumentName] = useState("");
+  const [category, setCategory] = useState("Other");
+  const [description, setDescription] = useState("");
+
+  const [loadingClient, setLoadingClient] = useState(true);
+  const [loadingDocuments, setLoadingDocuments] = useState(false);
+  const [uploading, setUploading] = useState(false);
+
+  const [message, setMessage] = useState("");
+  const [error, setError] = useState("");
+
+  /* ========================================================= */
+  /* LOAD CLIENT */
+  /* ========================================================= */
+
+  useEffect(() => {
+    try {
+      const currentClientId =
+        localStorage.getItem("kbxCurrentClientId");
+
+      const clientData =
+        localStorage.getItem("kbxClient");
+
+      const clientAccounts =
+        localStorage.getItem("kbxClientAccounts");
+
+      let foundClient: Client | null = null;
+
+      /*
+       * First try the currently selected client.
+       */
+      if (clientAccounts && currentClientId) {
+        try {
+          const accounts = JSON.parse(clientAccounts);
+
+          if (Array.isArray(accounts)) {
+            foundClient =
+              accounts.find(
+                (account: Client) =>
+                  getClientId(account) === currentClientId
+              ) || null;
+          } else if (
+            accounts &&
+            typeof accounts === "object"
+          ) {
+            foundClient =
+              accounts[currentClientId] || null;
+          }
+        } catch {
+          // Ignore malformed account storage.
+        }
+      }
+
+      /*
+       * Fall back to kbxClient.
+       */
+      if (!foundClient && clientData) {
+        try {
+          foundClient = JSON.parse(clientData);
+        } catch {
+          foundClient = null;
+        }
+      }
+
+      setClient(foundClient);
+    } catch {
+      setClient(null);
+    } finally {
+      setLoadingClient(false);
+    }
+  }, []);
+
+  /* ========================================================= */
+  /* LOAD DOCUMENTS */
+  /* ========================================================= */
+
+  useEffect(() => {
+    const clientId = getClientId(client);
+
+    if (!clientId) {
+      setDocuments([]);
+      return;
+    }
+
+    loadDocuments(clientId);
+  }, [client]);
+
+  async function loadDocuments(clientId: string) {
+    setLoadingDocuments(true);
+    setError("");
+
+    try {
+      const response = await fetch(
+        `/api/admin/documents?clientId=${encodeURIComponent(
+          clientId
+        )}`,
+        {
+          method: "GET",
+          cache: "no-store",
+        }
+      );
+
+      const data = await response.json();
+
+      if (!response.ok) {
+        throw new Error(
+          data?.error || "Unable to load documents."
+        );
+      }
+
+      setDocuments(
+        Array.isArray(data.documents)
+          ? data.documents
+          : []
+      );
+    } catch (err) {
+      setError(
+        err instanceof Error
+          ? err.message
+          : "Unable to load documents."
+      );
+    } finally {
+      setLoadingDocuments(false);
+    }
+  }
+
+  /* ========================================================= */
+  /* SELECT FILE */
+  /* ========================================================= */
+
+  function handleFileChange(
+    event: React.ChangeEvent<HTMLInputElement>
+  ) {
+    const selectedFile = event.target.files?.[0];
+
+    if (!selectedFile) return;
+
+    setFile(selectedFile);
+
+    if (!documentName) {
+      setDocumentName(
+        selectedFile.name.replace(/\.[^/.]+$/, "")
+      );
+    }
+
+    setMessage("");
+    setError("");
+  }
+
+  /* ========================================================= */
+  /* UPLOAD DOCUMENT */
+  /* ========================================================= */
+
+  async function handleUpload(
+    event: React.FormEvent<HTMLFormElement>
+  ) {
+    event.preventDefault();
+
+    setMessage("");
+    setError("");
+
+    const clientId = getClientId(client);
+
+    if (!clientId) {
+      setError(
+        "No client is currently selected. Open a client project first."
+      );
+      return;
+    }
+
+    if (!file) {
+      setError("Please select a document to upload.");
+      return;
+    }
+
+    if (!documentName.trim()) {
+      setError("Please enter a document name.");
+      return;
+    }
+
+    setUploading(true);
+
+    try {
+      const formData = new FormData();
+
+      formData.append("file", file);
+      formData.append("clientId", clientId);
+      formData.append(
+        "clientName",
+        client?.name || ""
+      );
+      formData.append(
+        "projectName",
+        client?.projectName || ""
+      );
+      formData.append(
+        "projectType",
+        client?.projectType || ""
+      );
+      formData.append(
+        "documentName",
+        documentName.trim()
+      );
+      formData.append("category", category);
+      formData.append(
+        "description",
+        description.trim()
+      );
+
+      const response = await fetch(
+        "/api/admin/documents",
+        {
+          method: "POST",
+          body: formData,
+        }
+      );
+
+      const data = await response.json();
+
+      if (!response.ok) {
+        throw new Error(
+          data?.error || "Document upload failed."
+        );
+      }
+
+      setMessage("Document uploaded successfully.");
+
+      setDocuments((current) => [
+        data.document,
+        ...current,
+      ]);
+
+      setFile(null);
+      setDocumentName("");
+      setCategory("Other");
+      setDescription("");
+
+      if (fileInputRef.current) {
+        fileInputRef.current.value = "";
+      }
+    } catch (err) {
+      setError(
+        err instanceof Error
+          ? err.message
+          : "Document upload failed."
+      );
+    } finally {
+      setUploading(false);
+    }
+  }
+
+  /* ========================================================= */
+  /* DELETE DOCUMENT */
+  /* ========================================================= */
+
+  async function handleDelete(document: DocumentItem) {
+    const clientId = getClientId(client);
+
+    if (!clientId) return;
+
+    const confirmed = window.confirm(
+      `Delete "${document.name}"?\n\nThis cannot be undone.`
+    );
+
+    if (!confirmed) return;
+
+    setMessage("");
+    setError("");
+
+    try {
+      const response = await fetch(
+        "/api/admin/documents",
+        {
+          method: "DELETE",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            id: document.id,
+            clientId,
+            fileName: document.fileName,
+          }),
+        }
+      );
+
+      const data = await response.json();
+
+      if (!response.ok) {
+        throw new Error(
+          data?.error || "Unable to delete document."
+        );
+      }
+
+      setDocuments((current) =>
+        current.filter(
+          (item) => item.id !== document.id
+        )
+      );
+
+      setMessage("Document deleted.");
+    } catch (err) {
+      setError(
+        err instanceof Error
+          ? err.message
+          : "Unable to delete document."
+      );
+    }
+  }
+
+  /* ========================================================= */
+  /* NO CLIENT */
+  /* ========================================================= */
+
+  if (!loadingClient && !client) {
+    return (
+      <main className="min-h-screen bg-[#f7f7f5] text-black">
+        <header className="border-b border-black/10 bg-white">
+          <div className="mx-auto flex h-20 max-w-[1400px] items-center justify-between px-5 md:px-8">
+            <Link
+              href="/"
+              className="text-sm font-semibold"
+            >
+              KBX Spatial Atelier
+            </Link>
+
+            <Link
+              href="/"
+              className="rounded-full border border-black/10 px-4 py-2 text-xs font-medium"
+            >
+              Back to Website
+            </Link>
+          </div>
+        </header>
+
+        <section className="mx-auto flex min-h-[70vh] max-w-[700px] items-center justify-center px-5">
+          <div className="w-full rounded-3xl border border-black/10 bg-white p-8 text-center shadow-sm">
+            <div
+              className="mx-auto flex h-14 w-14 items-center justify-center rounded-2xl text-xl text-white"
+              style={{ backgroundColor: RED }}
+            >
+              !
+            </div>
+
+            <h1 className="mt-6 text-2xl font-semibold">
+              No client selected
+            </h1>
+
+            <p className="mx-auto mt-3 max-w-md text-sm leading-6 text-black/50">
+              Select or open a client project before
+              uploading project documents.
+            </p>
+
+            <Link
+              href="/client-profile"
+              className="mt-7 inline-flex rounded-full px-6 py-3 text-sm font-semibold text-white"
+              style={{ backgroundColor: RED }}
+            >
+              Open Client Profile
+            </Link>
+          </div>
+        </section>
+      </main>
+    );
+  }
+
+  const clientId = getClientId(client);
+
   return (
     <main className="min-h-screen bg-[#f7f7f5] text-black">
 
-      {/* ========================================================= */}
+      {/* ===================================================== */}
       {/* HEADER */}
-      {/* ========================================================= */}
+      {/* ===================================================== */}
 
       <header className="sticky top-0 z-50 border-b border-black/10 bg-[#f7f7f5]/95 backdrop-blur-xl">
-        <div className="mx-auto flex h-[100px] max-w-[1400px] items-center justify-between px-5 md:px-8">
+        <div className="mx-auto flex h-20 max-w-[1400px] items-center justify-between px-5 md:px-8">
 
-          {/* LOGO + BRAND */}
+          <div className="flex items-center gap-4">
+            <Link
+              href="/"
+              className="text-sm font-semibold tracking-tight"
+            >
+              KBX Spatial Atelier
+            </Link>
+
+            <span className="text-black/20">
+              /
+            </span>
+
+            <span className="text-xs text-black/45">
+              Admin
+            </span>
+
+            <span className="text-black/20">
+              /
+            </span>
+
+            <span className="text-xs font-medium">
+              Project
+            </span>
+          </div>
+
           <Link
             href="/"
-            className="flex items-center"
+            className="rounded-full border border-black/10 bg-white px-4 py-2 text-xs font-medium transition hover:border-black/25"
           >
-            <div className="relative h-[64px] w-[130px] shrink-0 sm:h-[70px] sm:w-[140px]">
-              <Image
-                src="/kbx-logo.svg"
-                alt="KBX Spatial Atelier"
-                fill
-                priority
-                sizes="140px"
-                className="object-contain object-left"
-              />
-            </div>
-
-            <div className="ml-2 hidden sm:block leading-none">
-              <p className="text-sm font-semibold tracking-tight">
-                KBX Spatial Atelier
-              </p>
-
-              <p className="mt-[6px] text-[10px] uppercase tracking-[0.2em] text-black/45">
-                Design Studio
-              </p>
-            </div>
-          </Link>
-
-          {/* NAVIGATION */}
-          <nav className="hidden items-center gap-7 lg:flex">
-
-            <a
-              href="#services"
-              className="text-sm text-black/65 transition hover:text-black"
-            >
-              Services
-            </a>
-
-            <a
-              href="#process"
-              className="text-sm text-black/65 transition hover:text-black"
-            >
-              Process
-            </a>
-
-            <a
-              href="#faqs"
-              className="text-sm text-black/65 transition hover:text-black"
-            >
-              FAQs
-            </a>
-
-            <a
-              href="#about"
-              className="text-sm text-black/65 transition hover:text-black"
-            >
-              About Us
-            </a>
-
-            <a
-              href="#contact"
-              className="text-sm text-black/65 transition hover:text-black"
-            >
-              Contact
-            </a>
-
-          </nav>
-
-          {/* CLIENT PROFILE */}
-          <Link
-            href="/client-profile"
-            className="flex items-center gap-2 rounded-full bg-black px-4 py-2.5 text-sm font-medium text-white transition hover:bg-[#910B0A]"
-          >
-            <span className="flex h-6 w-6 items-center justify-center rounded-full bg-white/15 text-xs">
-              ◉
-            </span>
-
-            <span className="hidden sm:inline">
-              Client&apos;s Profile
-            </span>
-
-            <span className="sm:hidden">
-              Profile
-            </span>
+            Website
           </Link>
 
         </div>
       </header>
 
-      {/* ========================================================= */}
-      {/* HERO */}
-      {/* ========================================================= */}
+      {/* ===================================================== */}
+      {/* PAGE */}
+      {/* ===================================================== */}
 
-      <section className="relative min-h-[calc(100vh-100px)] overflow-hidden border-b border-black/10">
+      <div className="mx-auto max-w-[1400px] px-5 py-8 md:px-8 md:py-10">
 
-        {/* HERO BACKGROUND IMAGE */}
-        <Image
-          src="/hero.interior.jpg"
-          alt="KBX Spatial Atelier interior design"
-          fill
-          priority
-          sizes="100vw"
-          className="object-cover"
-        />
+        {/* PAGE HEADER */}
 
-        {/* VERY SUBTLE OVERLAY */}
-        <div className="absolute inset-0 bg-white/10" />
-
-        {/* HERO CONTENT */}
-        <div className="relative z-10 flex min-h-[calc(100vh-100px)] items-center justify-center px-5 py-20 md:px-8">
-
-          <div className="mx-auto max-w-[1100px] text-center text-black">
-
-            {/* LABEL */}
-            <div className="mx-auto mb-6 flex w-fit items-center gap-2 rounded-full border border-black/15 bg-white/70 px-4 py-2 text-xs font-medium backdrop-blur-md">
-
-              <span
-                className="h-2 w-2 rounded-full"
-                style={{ backgroundColor: RED }}
-              />
-
-              Spatial Design Studio
-
-            </div>
-
-            {/* MAIN HEADING */}
-            <h1 className="mx-auto max-w-5xl text-4xl font-semibold leading-[1.05] tracking-[-0.04em] md:text-6xl lg:text-7xl">
-
-              Sophisticated environments.
-              <br />
-
-              <span style={{ color: RED }}>
-                Timeless design.
-              </span>
-
-            </h1>
-
-            {/* DESCRIPTION */}
-            <p className="mx-auto mt-6 max-w-xl text-sm leading-6 text-white md:text-base">
-
-              Interior Design
-              <span className="mx-2 text-white/60">•</span>
-              Architecture
-              <span className="mx-2 text-white/60">•</span>
-              Bespoke Space
-
-            </p>
-
-            {/* BUTTONS */}
-            <div className="mt-9 flex flex-col justify-center gap-3 sm:flex-row">
-
-              <Link
-                href="/client-profile"
-                className="rounded-full px-7 py-3.5 text-sm font-semibold text-white transition hover:opacity-90"
-                style={{ backgroundColor: RED }}
-              >
-                Start a Project
-              </Link>
-
-              <Link
-                href="/consultation"
-                className="rounded-full border border-black/20 bg-white/75 px-7 py-3.5 text-sm font-semibold text-black backdrop-blur-md transition hover:bg-white"
-              >
-                Book a Free Consultation
-              </Link>
-
-            </div>
-
-          </div>
-
-        </div>
-
-      </section>
-
-      {/* ========================================================= */}
-      {/* APP QUICK ACCESS */}
-      {/* ========================================================= */}
-
-      <section className="px-5 py-8 md:px-8">
-        <div className="mx-auto grid max-w-[1400px] gap-3 md:grid-cols-4">
-
-          {/* START A PROJECT */}
-          <Link
-            href="/client-profile"
-            className="rounded-2xl border border-black/10 bg-white p-5 transition hover:-translate-y-0.5 hover:border-black/25"
-          >
-
-            <div className="mb-8 flex items-center justify-between">
-
-              <span className="flex h-10 w-10 items-center justify-center rounded-xl bg-black text-lg text-white">
-                ✦
-              </span>
-
-              <span className="text-xs text-black/35">
-                01
-              </span>
-
-            </div>
-
-            <p className="text-sm font-semibold">
-              Start a Project
-            </p>
-
-            <p className="mt-1 text-xs leading-5 text-black/45">
-              Tell us what you want to create.
-            </p>
-
-          </Link>
-
-          {/* CONSULTATION */}
-          <Link
-            href="/consultation"
-            className="rounded-2xl border border-black/10 bg-white p-5 transition hover:-translate-y-0.5 hover:border-black/25"
-          >
-
-            <div className="mb-8 flex items-center justify-between">
-
-              <span
-                className="flex h-10 w-10 items-center justify-center rounded-xl text-lg text-white"
-                style={{ backgroundColor: RED }}
-              >
-                ◷
-              </span>
-
-              <span className="text-xs text-black/35">
-                02
-              </span>
-
-            </div>
-
-            <p className="text-sm font-semibold">
-              Consultation
-            </p>
-
-            <p className="mt-1 text-xs leading-5 text-black/45">
-              Discuss your project with KBX.
-            </p>
-
-          </Link>
-
-          {/* PROCESS */}
-          <a
-            href="#process"
-            className="rounded-2xl border border-black/10 bg-white p-5 transition hover:-translate-y-0.5 hover:border-black/25"
-          >
-
-            <div className="mb-8 flex items-center justify-between">
-
-              <span className="flex h-10 w-10 items-center justify-center rounded-xl bg-black text-lg text-white">
-                →
-              </span>
-
-              <span className="text-xs text-black/35">
-                03
-              </span>
-
-            </div>
-
-            <p className="text-sm font-semibold">
-              Our Process
-            </p>
-
-            <p className="mt-1 text-xs leading-5 text-black/45">
-              See how your project moves forward.
-            </p>
-
-          </a>
-
-          {/* CONTACT */}
-          <a
-            href="#contact"
-            className="rounded-2xl border border-black/10 bg-white p-5 transition hover:-translate-y-0.5 hover:border-black/25"
-          >
-
-            <div className="mb-8 flex items-center justify-between">
-
-              <span className="flex h-10 w-10 items-center justify-center rounded-xl bg-black text-lg text-white">
-                ↗
-              </span>
-
-              <span className="text-xs text-black/35">
-                04
-              </span>
-
-            </div>
-
-            <p className="text-sm font-semibold">
-              Contact Studio
-            </p>
-
-            <p className="mt-1 text-xs leading-5 text-black/45">
-              Have a question? Get in touch.
-            </p>
-
-          </a>
-
-        </div>
-      </section>
-
-      {/* ========================================================= */}
-      {/* WHAT WE DO */}
-      {/* ========================================================= */}
-
-      <section
-        id="services"
-        className="px-5 py-12 md:px-8 md:py-16"
-      >
-
-        <div className="mx-auto max-w-[1400px]">
-
-          {/* SECTION HEADER */}
-          <div className="mb-8 flex items-end justify-between">
-
-            <div>
-
-              <p
-                className="mb-2 text-xs font-semibold uppercase tracking-[0.2em]"
-                style={{ color: RED }}
-              >
-                What We Do
-              </p>
-
-              <h2 className="text-2xl font-semibold tracking-tight md:text-3xl">
-                Spaces designed around you.
-              </h2>
-
-            </div>
-
-            <span className="hidden text-xs text-black/35 sm:block">
-              08 services
-            </span>
-
-          </div>
-
-          {/* SERVICES GRID */}
-          <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-
-            {services.map((service) => (
-              <div
-                key={service.number}
-                className="group relative overflow-hidden rounded-2xl border border-black/10 bg-[#ecece9]"
-              >
-
-                {/* SERVICE IMAGE */}
-                <div className="relative aspect-[4/5] overflow-hidden">
-
-                  <Image
-                    src={service.image}
-                    alt={service.title}
-                    fill
-                    sizes="(max-width: 640px) 100vw, (max-width: 1024px) 50vw, 25vw"
-                    className="object-cover transition duration-700 group-hover:scale-105"
-                  />
-
-                  {/* DARK GRADIENT */}
-                  <div className="absolute inset-0 bg-gradient-to-t from-black/85 via-black/20 to-transparent" />
-
-                  {/* NUMBER */}
-                  <div className="absolute right-4 top-4 flex h-9 w-9 items-center justify-center rounded-full bg-white/90 text-[10px] font-semibold text-black backdrop-blur-sm">
-                    {service.number}
-                  </div>
-
-                  {/* SERVICE TEXT */}
-                  <div className="absolute inset-x-0 bottom-0 p-5">
-
-                    <h3 className="max-w-[280px] text-lg font-semibold leading-tight text-white">
-                      {service.title}
-                    </h3>
-
-                    <div
-                      className="mt-4 h-px w-8 transition-all duration-500 group-hover:w-16"
-                      style={{ backgroundColor: RED }}
-                    />
-
-                  </div>
-
-                </div>
-
-              </div>
-            ))}
-
-          </div>
-
-        </div>
-
-      </section>
-
-      {/* ========================================================= */}
-      {/* PROJECTS */}
-      {/* ========================================================= */}
-
-      <section className="border-y border-black/10 bg-white px-5 py-12 md:px-8 md:py-16">
-
-        <div className="mx-auto max-w-[1400px]">
-
-          <div className="mb-8 flex items-end justify-between">
-
-            <div>
-
-              <p
-                className="mb-2 text-xs font-semibold uppercase tracking-[0.2em]"
-                style={{ color: RED }}
-              >
-                Selected Projects
-              </p>
-
-              <h2 className="text-2xl font-semibold tracking-tight md:text-3xl">
-                Spaces in progress
-              </h2>
-
-            </div>
-
-            <button className="hidden rounded-full border border-black/10 px-4 py-2 text-xs font-medium sm:block">
-              View all projects →
-            </button>
-
-          </div>
-
-          <div className="grid gap-3 md:grid-cols-3">
-
-            {projects.map((project) => (
-              <div
-                key={project.title}
-                className="group"
-              >
-
-                {/* PROJECT IMAGE */}
-                <div className="relative aspect-[4/3] overflow-hidden rounded-2xl border border-black/10 bg-[#ecece9]">
-
-                  <Image
-                    src={project.image}
-                    alt={project.title}
-                    fill
-                    sizes="(max-width: 768px) 100vw, 33vw"
-                    className="object-cover transition duration-500 group-hover:scale-105"
-                  />
-
-                  {/* PROJECT TYPE */}
-                  <div className="absolute left-4 top-4 rounded-full bg-white/90 px-3 py-1.5 text-[10px] font-semibold uppercase tracking-wider backdrop-blur-sm">
-                    {project.type}
-                  </div>
-
-                </div>
-
-                {/* PROJECT TITLE */}
-                <div className="flex items-center justify-between px-1 pt-4">
-
-                  <p className="text-sm font-semibold">
-                    {project.title}
-                  </p>
-
-                  <span className="text-black/30 transition group-hover:text-black">
-                    ↗
-                  </span>
-
-                </div>
-
-              </div>
-            ))}
-
-          </div>
-
-        </div>
-
-      </section>
-
-      {/* ========================================================= */}
-      {/* WHY KBX */}
-      {/* ========================================================= */}
-
-      <section
-        id="about"
-        className="px-5 py-12 md:px-8 md:py-16"
-      >
-
-        <div className="mx-auto grid max-w-[1400px] gap-8 md:grid-cols-[0.8fr_1.2fr]">
+        <div className="flex flex-col gap-6 lg:flex-row lg:items-end lg:justify-between">
 
           <div>
-
             <p
-              className="mb-2 text-xs font-semibold uppercase tracking-[0.2em]"
+              className="text-xs font-semibold uppercase tracking-[0.2em]"
               style={{ color: RED }}
             >
-              Why KBX
+              Project Management
             </p>
 
-            <h2 className="max-w-md text-3xl font-semibold leading-tight tracking-tight md:text-4xl">
-              Design with intention, not decoration.
-            </h2>
+            <h1 className="mt-2 text-3xl font-semibold tracking-tight md:text-4xl">
+              Client Documents
+            </h1>
 
+            <p className="mt-3 max-w-xl text-sm leading-6 text-black/50">
+              Manage documents associated with this
+              client project and upload files as the
+              project progresses.
+            </p>
           </div>
 
-          <div className="grid gap-3 sm:grid-cols-2">
+          <div className="rounded-2xl border border-black/10 bg-white px-5 py-4">
+            <p className="text-[10px] font-semibold uppercase tracking-[0.15em] text-black/35">
+              Client ID
+            </p>
 
-            {[
-              [
-                "01",
-                "Purposeful Design",
-                "Every decision begins with how the space needs to work.",
-              ],
-              [
-                "02",
-                "Attention to Detail",
-                "Materials, proportions and details are developed carefully.",
-              ],
-              [
-                "03",
-                "End-to-End Thinking",
-                "Design is connected to documentation, fabrication and installation.",
-              ],
-              [
-                "04",
-                "Client-Centred",
-                "Your requirements remain central throughout the project.",
-              ],
-            ].map(([num, title, description]) => (
-              <div
-                key={num}
-                className="rounded-2xl border border-black/10 bg-white p-5"
-              >
-
-                <span
-                  className="text-xs font-semibold"
-                  style={{ color: RED }}
-                >
-                  {num}
-                </span>
-
-                <h3 className="mt-8 text-sm font-semibold">
-                  {title}
-                </h3>
-
-                <p className="mt-2 text-xs leading-5 text-black/45">
-                  {description}
-                </p>
-
-              </div>
-            ))}
-
+            <p className="mt-1 break-all text-xs font-medium">
+              {clientId || "—"}
+            </p>
           </div>
 
         </div>
 
-      </section>
+        {/* ================================================= */}
+        {/* CLIENT CARD */}
+        {/* ================================================= */}
 
-      {/* ========================================================= */}
-      {/* PROCESS */}
-      {/* ========================================================= */}
+        <section className="mt-8 rounded-3xl border border-black/10 bg-white p-6 md:p-7">
 
-      <section
-        id="process"
-        className="bg-black px-5 py-12 text-white md:px-8 md:py-16"
-      >
+          <div className="flex flex-col gap-6 md:flex-row md:items-center md:justify-between">
 
-        <div className="mx-auto max-w-[1400px]">
-
-          <div className="mb-10">
-
-            <p className="mb-2 text-xs font-semibold uppercase tracking-[0.2em] text-white/50">
-              Project Workflow
-            </p>
-
-            <h2 className="text-2xl font-semibold tracking-tight md:text-3xl">
-              From brief to finished space.
-            </h2>
-
-          </div>
-
-          <div className="grid grid-cols-2 gap-px overflow-hidden rounded-2xl border border-white/10 bg-white/10 md:grid-cols-3 lg:grid-cols-5">
-
-            {process.map((item, index) => (
-              <div
-                key={item}
-                className="bg-black p-5 transition hover:bg-[#910B0A]"
-              >
-
-                <span className="text-[10px] text-white/35">
-                  {String(index + 1).padStart(2, "0")}
-                </span>
-
-                <p className="mt-8 text-sm font-medium">
-                  {item}
-                </p>
-
-              </div>
-            ))}
-
-          </div>
-
-        </div>
-
-      </section>
-
-      {/* ========================================================= */}
-      {/* FAQ */}
-      {/* ========================================================= */}
-
-      <section
-        id="faqs"
-        className="px-5 py-12 md:px-8 md:py-16"
-      >
-
-        <div className="mx-auto max-w-[1000px]">
-
-          <div className="mb-8 text-center">
-
-            <p
-              className="mb-2 text-xs font-semibold uppercase tracking-[0.2em]"
-              style={{ color: RED }}
-            >
-              FAQs
-            </p>
-
-            <h2 className="text-2xl font-semibold tracking-tight md:text-3xl">
-              Frequently asked questions
-            </h2>
-
-          </div>
-
-          <div className="space-y-2">
-
-            {faqs.map((faq) => (
-              <details
-                key={faq.q}
-                className="group rounded-2xl border border-black/10 bg-white"
-              >
-
-                <summary className="flex cursor-pointer list-none items-center justify-between p-5 text-sm font-medium">
-
-                  {faq.q}
-
-                  <span className="ml-4 text-lg text-black/40 transition group-open:rotate-45">
-                    +
-                  </span>
-
-                </summary>
-
-                <p className="px-5 pb-5 text-sm leading-6 text-black/50">
-                  {faq.a}
-                </p>
-
-              </details>
-            ))}
-
-          </div>
-
-        </div>
-
-      </section>
-
-      {/* ========================================================= */}
-      {/* CONTACT */}
-      {/* ========================================================= */}
-
-      <section
-        id="contact"
-        className="px-5 pb-12 md:px-8 md:pb-16"
-      >
-
-        <div className="mx-auto max-w-[1400px] overflow-hidden rounded-3xl bg-[#910B0A] text-white">
-
-          <div className="grid md:grid-cols-[1fr_0.9fr]">
-
-            {/* CONTACT INFORMATION */}
-            <div className="p-7 md:p-10">
-
-              <p className="text-xs font-semibold uppercase tracking-[0.2em] text-white/60">
-                Get In Touch
+            <div>
+              <p className="text-[10px] font-semibold uppercase tracking-[0.15em] text-black/35">
+                Current Client
               </p>
 
-              <h2 className="mt-5 max-w-lg text-3xl font-semibold leading-tight tracking-tight md:text-4xl">
-                Have a space in mind?
+              <h2 className="mt-2 text-xl font-semibold">
+                {client?.name || "Unnamed Client"}
               </h2>
 
-              <p className="mt-4 max-w-md text-sm leading-6 text-white/65">
-                Tell us a little about your project and we&apos;ll get back to you.
-              </p>
+              <div className="mt-3 flex flex-wrap gap-x-5 gap-y-2 text-xs text-black/50">
 
-              <div className="mt-8 space-y-3">
+                {client?.email && (
+                  <span>
+                    {client.email}
+                  </span>
+                )}
 
-                <p className="text-xs uppercase tracking-[0.15em] text-white/45">
-                  Contact
-                </p>
-
-                <a
-                  href="tel:+233558167009"
-                  className="block text-sm font-medium transition hover:text-white/70"
-                >
-                  +233 558 167 009
-                </a>
-
-                <a
-                  href="tel:+233209468411"
-                  className="block text-sm font-medium transition hover:text-white/70"
-                >
-                  +233 209 468 411
-                </a>
+                {client?.phone && (
+                  <span>
+                    {client.phone}
+                  </span>
+                )}
 
               </div>
+            </div>
+
+            <div className="text-left md:text-right">
+
+              <p className="text-[10px] font-semibold uppercase tracking-[0.15em] text-black/35">
+                Project
+              </p>
+
+              <p className="mt-2 text-sm font-medium">
+                {client?.projectName ||
+                  "Untitled Project"}
+              </p>
+
+              {client?.projectType && (
+                <p className="mt-1 text-xs text-black/45">
+                  {client.projectType}
+                </p>
+              )}
 
             </div>
 
-            {/* CONTACT FORM */}
-            <form className="space-y-3 bg-black/10 p-7 md:p-10">
+          </div>
 
-              <input
-                type="text"
-                placeholder="Your name"
-                className="w-full rounded-xl border border-white/15 bg-white/10 px-4 py-3 text-sm outline-none placeholder:text-white/45 focus:border-white/40"
-              />
+        </section>
 
-              <input
-                type="email"
-                placeholder="Email address"
-                className="w-full rounded-xl border border-white/15 bg-white/10 px-4 py-3 text-sm outline-none placeholder:text-white/45 focus:border-white/40"
-              />
+        {/* ================================================= */}
+        {/* STATUS */}
+        {/* ================================================= */}
 
-              <input
-                type="tel"
-                placeholder="Contact number"
-                className="w-full rounded-xl border border-white/15 bg-white/10 px-4 py-3 text-sm outline-none placeholder:text-white/45 focus:border-white/40"
-              />
+        {(message || error) && (
+          <div
+            className={`mt-5 rounded-2xl border px-5 py-4 text-sm ${
+              error
+                ? "border-red-200 bg-red-50 text-red-700"
+                : "border-green-200 bg-green-50 text-green-700"
+            }`}
+          >
+            {error || message}
+          </div>
+        )}
 
-              <textarea
-                placeholder="Tell us about your project..."
-                rows={4}
-                className="w-full resize-none rounded-xl border border-white/15 bg-white/10 px-4 py-3 text-sm outline-none placeholder:text-white/45 focus:border-white/40"
-              />
+        {/* ================================================= */}
+        {/* MAIN GRID */}
+        {/* ================================================= */}
+
+        <div className="mt-6 grid gap-6 lg:grid-cols-[0.8fr_1.2fr]">
+
+          {/* ================================================= */}
+          {/* UPLOAD */}
+          {/* ================================================= */}
+
+          <section className="rounded-3xl border border-black/10 bg-white p-6 md:p-7">
+
+            <div>
+              <p
+                className="text-xs font-semibold uppercase tracking-[0.18em]"
+                style={{ color: RED }}
+              >
+                Upload
+              </p>
+
+              <h2 className="mt-2 text-xl font-semibold">
+                Add a project document
+              </h2>
+
+              <p className="mt-2 text-xs leading-5 text-black/45">
+                Upload drawings, briefs, quotations,
+                surveys, renders or other project files.
+              </p>
+            </div>
+
+            <form
+              onSubmit={handleUpload}
+              className="mt-7 space-y-4"
+            >
+
+              {/* FILE */}
+
+              <div>
+
+                <label className="mb-2 block text-xs font-semibold">
+                  File
+                </label>
+
+                <input
+                  ref={fileInputRef}
+                  type="file"
+                  onChange={handleFileChange}
+                  className="block w-full cursor-pointer rounded-xl border border-black/10 bg-[#f7f7f5] px-3 py-3 text-xs file:mr-4 file:rounded-lg file:border-0 file:bg-black file:px-3 file:py-2 file:text-xs file:font-medium file:text-white"
+                />
+
+                {file && (
+                  <div className="mt-2 rounded-xl bg-[#f7f7f5] px-3 py-2 text-xs text-black/50">
+                    Selected:{" "}
+                    <span className="font-medium text-black">
+                      {file.name}
+                    </span>{" "}
+                    ({formatFileSize(file.size)})
+                  </div>
+                )}
+
+              </div>
+
+              {/* DOCUMENT NAME */}
+
+              <div>
+
+                <label className="mb-2 block text-xs font-semibold">
+                  Document name
+                </label>
+
+                <input
+                  type="text"
+                  value={documentName}
+                  onChange={(event) =>
+                    setDocumentName(event.target.value)
+                  }
+                  placeholder="e.g. Site Survey Measurements"
+                  className="w-full rounded-xl border border-black/10 bg-[#f7f7f5] px-4 py-3 text-sm outline-none transition focus:border-black/30"
+                />
+
+              </div>
+
+              {/* CATEGORY */}
+
+              <div>
+
+                <label className="mb-2 block text-xs font-semibold">
+                  Category
+                </label>
+
+                <select
+                  value={category}
+                  onChange={(event) =>
+                    setCategory(event.target.value)
+                  }
+                  className="w-full rounded-xl border border-black/10 bg-[#f7f7f5] px-4 py-3 text-sm outline-none transition focus:border-black/30"
+                >
+                  {categories.map((item) => (
+                    <option
+                      key={item}
+                      value={item}
+                    >
+                      {item}
+                    </option>
+                  ))}
+                </select>
+
+              </div>
+
+              {/* DESCRIPTION */}
+
+              <div>
+
+                <label className="mb-2 block text-xs font-semibold">
+                  Description
+                  <span className="ml-1 font-normal text-black/35">
+                    (optional)
+                  </span>
+                </label>
+
+                <textarea
+                  value={description}
+                  onChange={(event) =>
+                    setDescription(event.target.value)
+                  }
+                  rows={4}
+                  placeholder="Add a short description..."
+                  className="w-full resize-none rounded-xl border border-black/10 bg-[#f7f7f5] px-4 py-3 text-sm outline-none transition focus:border-black/30"
+                />
+
+              </div>
+
+              {/* BUTTON */}
 
               <button
                 type="submit"
-                className="w-full rounded-xl bg-white px-4 py-3.5 text-sm font-semibold text-black transition hover:bg-white/90"
+                disabled={uploading}
+                className="w-full rounded-xl px-5 py-3.5 text-sm font-semibold text-white transition hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-50"
+                style={{
+                  backgroundColor: RED,
+                }}
               >
-                Send Enquiry →
+                {uploading
+                  ? "Uploading..."
+                  : "Upload Document →"}
               </button>
 
             </form>
 
-          </div>
+          </section>
+
+          {/* ================================================= */}
+          {/* DOCUMENT LIST */}
+          {/* ================================================= */}
+
+          <section className="rounded-3xl border border-black/10 bg-white p-6 md:p-7">
+
+            <div className="flex items-start justify-between gap-4">
+
+              <div>
+
+                <p
+                  className="text-xs font-semibold uppercase tracking-[0.18em]"
+                  style={{ color: RED }}
+                >
+                  Project Files
+                </p>
+
+                <h2 className="mt-2 text-xl font-semibold">
+                  Uploaded documents
+                </h2>
+
+              </div>
+
+              <div className="rounded-full bg-[#f7f7f5] px-3 py-1.5 text-xs font-medium">
+                {documents.length}{" "}
+                {documents.length === 1
+                  ? "file"
+                  : "files"}
+              </div>
+
+            </div>
+
+            <div className="mt-6">
+
+              {loadingDocuments ? (
+                <div className="rounded-2xl border border-black/10 bg-[#f7f7f5] p-8 text-center">
+                  <p className="text-sm text-black/45">
+                    Loading documents...
+                  </p>
+                </div>
+              ) : documents.length === 0 ? (
+                <div className="rounded-2xl border border-dashed border-black/15 bg-[#f7f7f5] p-10 text-center">
+
+                  <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-2xl bg-black text-lg text-white">
+                    ↑
+                  </div>
+
+                  <h3 className="mt-4 text-sm font-semibold">
+                    No documents yet
+                  </h3>
+
+                  <p className="mt-2 text-xs leading-5 text-black/40">
+                    Uploaded project documents will
+                    appear here.
+                  </p>
+
+                </div>
+              ) : (
+                <div className="space-y-3">
+
+                  {documents.map((document) => (
+                    <div
+                      key={document.id}
+                      className="group rounded-2xl border border-black/10 p-4 transition hover:border-black/20"
+                    >
+
+                      <div className="flex gap-4">
+
+                        <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-[#f7f7f5] text-sm">
+                          📄
+                        </div>
+
+                        <div className="min-w-0 flex-1">
+
+                          <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
+
+                            <div className="min-w-0">
+
+                              <h3 className="truncate text-sm font-semibold">
+                                {document.name}
+                              </h3>
+
+                              <p className="mt-1 truncate text-xs text-black/40">
+                                {document.fileName}
+                              </p>
+
+                            </div>
+
+                            <span className="w-fit shrink-0 rounded-full bg-[#f7f7f5] px-2.5 py-1 text-[9px] font-semibold uppercase tracking-wider text-black/50">
+                              {document.category}
+                            </span>
+
+                          </div>
+
+                          {document.description && (
+                            <p className="mt-3 text-xs leading-5 text-black/45">
+                              {document.description}
+                            </p>
+                          )}
+
+                          <div className="mt-3 flex flex-wrap items-center gap-4 text-[10px] text-black/35">
+
+                            <span>
+                              {formatFileSize(
+                                document.fileSize
+                              )}
+                            </span>
+
+                            {document.createdAt && (
+                              <span>
+                                {new Date(
+                                  document.createdAt
+                                ).toLocaleDateString()}
+                              </span>
+                            )}
+
+                          </div>
+
+                          <div className="mt-4 flex flex-wrap gap-2">
+
+                            {document.url && (
+                              <a
+                                href={document.url}
+                                target="_blank"
+                                rel="noreferrer"
+                                className="rounded-full bg-black px-3 py-2 text-[10px] font-semibold text-white transition hover:bg-[#910B0A]"
+                              >
+                                Open Document ↗
+                              </a>
+                            )}
+
+                            <button
+                              type="button"
+                              onClick={() =>
+                                handleDelete(
+                                  document
+                                )
+                              }
+                              className="rounded-full border border-red-200 px-3 py-2 text-[10px] font-semibold text-red-600 transition hover:bg-red-50"
+                            >
+                              Delete
+                            </button>
+
+                          </div>
+
+                        </div>
+
+                      </div>
+
+                    </div>
+                  ))}
+
+                </div>
+              )}
+
+            </div>
+
+          </section>
 
         </div>
 
-      </section>
-
-      {/* ========================================================= */}
-      {/* FOOTER */}
-      {/* ========================================================= */}
-
-      <footer className="border-t border-black/10 bg-white px-5 py-8 md:px-8">
-
-        <div className="mx-auto max-w-[1400px]">
-
-          <div className="flex flex-col gap-8 md:flex-row md:items-end md:justify-between">
-
-            {/* FOOTER BRAND */}
-            <div>
-
-              <div className="flex items-center">
-
-                <div className="relative h-[48px] w-[100px] shrink-0 sm:h-[52px] sm:w-[105px]">
-
-                  <Image
-                    src="/kbx-logo.svg"
-                    alt="KBX Spatial Atelier"
-                    fill
-                    sizes="105px"
-                    className="object-contain object-left"
-                  />
-
-                </div>
-
-                <div className="ml-2 leading-none">
-
-                  <p className="text-sm font-semibold">
-                    KBX Spatial Atelier
-                  </p>
-
-                  <p className="mt-[5px] text-[10px] uppercase tracking-[0.18em] text-black/40">
-                    Interior Design • Architecture • Bespoke Space
-                  </p>
-
-                </div>
-
-              </div>
-
-              <p className="mt-5 max-w-sm text-xs leading-5 text-black/40">
-                Creating thoughtful, sophisticated environments through design,
-                architecture and bespoke spatial solutions.
-              </p>
-
-            </div>
-
-            {/* FOOTER CONTACT */}
-            <div className="flex flex-col gap-4 text-xs text-black/50">
-
-              <div className="flex flex-wrap gap-5">
-
-                <a
-                  href="tel:+233558167009"
-                  className="transition hover:text-black"
-                >
-                  ☎ +233 558 167 009
-                </a>
-
-                <a
-                  href="tel:+233209468411"
-                  className="transition hover:text-black"
-                >
-                  ☎ +233 209 468 411
-                </a>
-
-              </div>
-
-              <div className="flex flex-wrap gap-5">
-
-                <a
-                  href="https://www.tiktok.com/@kbx_spatial_atelier?_r=1&_t=ZS-99XAWb0oTBY"
-                  target="_blank"
-                  rel="noreferrer"
-                  className="transition hover:text-black"
-                >
-                  TikTok ↗
-                </a>
-
-                <a
-                  href="https://www.instagram.com/kbx_spatial_atelier/"
-                  target="_blank"
-                  rel="noreferrer"
-                  className="transition hover:text-black"
-                >
-                  Instagram ↗
-                </a>
-
-                <a
-                  href="https://www.facebook.com/share/1cKce7UyzT/"
-                  target="_blank"
-                  rel="noreferrer"
-                  className="transition hover:text-black"
-                >
-                  Facebook ↗
-                </a>
-
-              </div>
-
-            </div>
-
-          </div>
-
-          {/* COPYRIGHT */}
-          <div className="mt-8 border-t border-black/10 pt-5">
-
-            <div className="flex flex-col gap-2 text-[10px] uppercase tracking-[0.15em] text-black/30 sm:flex-row sm:justify-between">
-
-              <span>
-                © 2026 KBX Spatial Atelier
-              </span>
-
-              <span>
-                Designed with intention.
-              </span>
-
-            </div>
-
-            <Link
-              href="/app/admin/project"
-              aria-label="Website developer"
-              className="mt-4 block text-center text-[9px] text-black/25 transition hover:text-black/40"
-            >
-              Website developed by Isaac Otoo, CEO of KBX Spatial Atelier.
-            </Link>
-
-          </div>
-
-        </div>
-
-      </footer>
+      </div>
 
     </main>
   );
