@@ -34,6 +34,10 @@ export const metadata: Metadata = {
     '3D interior design Accra',
   ],
 
+  alternates: {
+    canonical: 'https://kbx-spatial-atelier.vercel.app/',
+  },
+
   verification: {
     google:
       'WebjbNL29lWKlUx9KMcOYgiCoYLOrJnbir2z-LSzTCE',
