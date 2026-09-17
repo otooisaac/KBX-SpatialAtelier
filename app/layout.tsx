@@ -71,9 +71,21 @@ export const metadata: Metadata = {
 
 const structuredData = {
   '@context': 'https://schema.org',
-  '@type': 'WebSite',
-  name: 'KBX Spatial Atelier',
-  url: 'https://kbx-spatial-atelier.vercel.app/',
+  '@graph': [
+    {
+      '@type': 'WebSite',
+      '@id': 'https://kbx-spatial-atelier.vercel.app/#website',
+      name: 'KBX Spatial Atelier',
+      url: 'https://kbx-spatial-atelier.vercel.app/',
+    },
+    {
+      '@type': 'Organization',
+      '@id': 'https://kbx-spatial-atelier.vercel.app/#organization',
+      name: 'KBX Spatial Atelier',
+      url: 'https://kbx-spatial-atelier.vercel.app/',
+      logo: 'https://kbx-spatial-atelier.vercel.app/icon.png',
+    },
+  ],
 };
 
 export default function RootLayout({
@@ -84,14 +96,14 @@ export default function RootLayout({
   return (
     <html lang="en">
       <body className={inter.className}>
-  <script
-    type="application/ld+json"
-    dangerouslySetInnerHTML={{
-      __html: JSON.stringify(structuredData),
-    }}
-  />
-  {children}
-</body>
+        <script
+          type="application/ld+json"
+          dangerouslySetInnerHTML={{
+            __html: JSON.stringify(structuredData),
+          }}
+        />
+        {children}
+      </body>
     </html>
   );
 }
