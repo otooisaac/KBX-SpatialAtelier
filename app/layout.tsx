@@ -69,6 +69,13 @@ export const metadata: Metadata = {
   },
 };
 
+const structuredData = {
+  '@context': 'https://schema.org',
+  '@type': 'WebSite',
+  name: 'KBX Spatial Atelier',
+  url: 'https://kbx-spatial-atelier.vercel.app/',
+};
+
 export default function RootLayout({
   children,
 }: {
@@ -76,7 +83,15 @@ export default function RootLayout({
 }) {
   return (
     <html lang="en">
-      <body className={inter.className}>{children}</body>
+      <body className={inter.className}>
+  <script
+    type="application/ld+json"
+    dangerouslySetInnerHTML={{
+      __html: JSON.stringify(structuredData),
+    }}
+  />
+  {children}
+</body>
     </html>
   );
 }
