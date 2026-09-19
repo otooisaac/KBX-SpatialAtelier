@@ -83,7 +83,7 @@ const structuredData = {
       '@id': 'https://kbx-spatial-atelier.vercel.app/#organization',
       name: 'KBX Spatial Atelier',
       url: 'https://kbx-spatial-atelier.vercel.app/',
-      logo: 'https://kbx-spatial-atelier.vercel.app/icon.png',
+      logo: 'https://kbx-spatial-atelier.vercel.app/icon.svg',
     },
   ],
 };
