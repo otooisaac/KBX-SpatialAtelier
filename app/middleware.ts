@@ -3,6 +3,7 @@ import { NextResponse } from "next/server";
 import type { NextRequest } from "next/server";
 
 export async function middleware(request: NextRequest) {
+    console.log("KBX MIDDLEWARE RUNNING:", request.nextUrl.pathname);
   let response = NextResponse.next({
     request,
   });
