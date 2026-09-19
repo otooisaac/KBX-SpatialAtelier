@@ -2,7 +2,7 @@
 
 import { FormEvent, useState } from "react";
 import { useRouter } from "next/navigation";
-import { supabase } from "../../lib/supabase";
+import { supabaseBrowser } from "../../lib/supabase-browser";
 
 const RED = "#910B0A";
 
@@ -22,7 +22,7 @@ export default function AdminLoginPage() {
 
     try {
       const { error: loginError } =
-        await supabase.auth.signInWithPassword({
+        await supabaseBrowser.auth.signInWithPassword({
           email: email.trim(),
           password,
         });
